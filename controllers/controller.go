@@ -88,7 +88,17 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 	cfg := cfManager.GetConfig()
 
 	for _, resFilter := range cfg.IncludeResource {
-		gvk := schema.FromAPIVersionAndKind(resFilter.APIVersion, resFilter.Name)
+		var gvk schema.GroupVersionKind
+		switch {
+		case resFilter.Name == "*" || resFilter.Name == "":
+			log.Error().Str("resource", resFilter.Name).Str("apiVersion", resFilter.APIVersion).Msg(fmt.Sprintf("Resource name cannot be \"%s\"", resFilter.Name))
+			continue
+		case resFilter.APIVersion == "*":
+			log.Error().Str("resource", resFilter.Name).Str("apiVersion", resFilter.APIVersion).Msg(fmt.Sprintf("API version cannot be \"%s\"", resFilter.APIVersion))
+			continue
+		default:
+			gvk = schema.FromAPIVersionAndKind(resFilter.APIVersion, resFilter.Name)
+		}
 		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if err != nil {
 			log.Error().Err(err).Msgf("Error getting mapping for %s", resFilter.Name)
