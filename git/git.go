@@ -18,6 +18,7 @@ type GitClient struct {
 	auth   *http.BasicAuth
 	branch string
 	dir    string
+	push   bool
 }
 
 func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error) {
@@ -26,8 +27,13 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 		Password: cfg.Password,
 	}
 
-	dir := "./repo" // Local directory to clone the repository
+	dir := cfg.RepositoryPath
 	var repo *git.Repository
+
+	push := true
+	if cfg.DryRun {
+		push = false
+	}
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		repo, err = git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
@@ -50,6 +56,7 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 		auth:   auth,
 		branch: cfg.Branch,
 		dir:    dir,
+		push:   push,
 	}, nil
 }
 
@@ -67,6 +74,10 @@ func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
 	// Committing the changes
 	if _, err := w.Commit(message, &git.CommitOptions{}); err != nil {
 		return err
+	}
+
+	if !g.push {
+		return nil
 	}
 
 	// Pushing the changes

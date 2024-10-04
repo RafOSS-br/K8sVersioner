@@ -56,7 +56,7 @@ func StartController(ctx context.Context, cfgManager *config.ConfigManager) erro
 	defer ticker.Stop()
 	log.Info().Msg("Starting main controller loop")
 
-	if cfg.DryRun {
+	if cfg.OneShot {
 		log.Info().Msg("Dry run mode enabled")
 		err := syncResources(ctx, cfgManager, dynClient, mapper, gitClient)
 		if err != nil {
