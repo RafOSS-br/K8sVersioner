@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s-git-operator/config"
 
@@ -28,6 +29,12 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 	}
 
 	dir := cfg.RepositoryPath
+	if strings.HasSuffix(dir, "/") {
+		dir = dir + cfg.RepositoryFolder
+	} else {
+		dir = dir + "/" + cfg.RepositoryFolder
+	}
+
 	var repo *git.Repository
 
 	push := true
@@ -37,7 +44,7 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		repo, err = git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
-			URL:           cfg.RepositoryURL,
+			URL:           cfg.Protocol + "://" + cfg.RepositoryURL,
 			ReferenceName: plumbing.ReferenceName("refs/heads/" + cfg.Branch),
 			Auth:          auth,
 		})

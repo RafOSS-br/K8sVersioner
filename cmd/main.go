@@ -24,7 +24,11 @@ func main() {
 
 	cfg, err := config.LoadConfig("config.json")
 	if err != nil {
+		if config.HandleValidationErrors(ctx, err) {
+			os.Exit(1)
+		}
 		log.Fatal().Err(err).Msg("Error loading configuration")
+		os.Exit(1)
 	}
 
 	cfgManager := config.NewConfigManager(cfg)
