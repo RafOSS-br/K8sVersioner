@@ -78,7 +78,7 @@ type ResourceFilter struct {
 	Name              string `json:"name"`
 	APIVersion        string `json:"apiVersion"`
 	WithManagedFields bool   `json:"withManagedFields"`
-	WithStatus        bool   `json:"withStatus"`
+	WithStatusField   bool   `json:"withStatusField"`
 }
 
 type GitConfig struct {

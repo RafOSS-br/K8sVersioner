@@ -138,7 +138,7 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 			}
 
 			// Verify if load status
-			if !resFilter.WithStatus {
+			if !resFilter.WithStatusField {
 				delete(item.Object, "status")
 			}
 
