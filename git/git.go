@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,23 +12,42 @@ import (
 	"github.com/go-git/go-git/v5"
 	gitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
 type GitClient struct {
 	repo   *git.Repository
-	auth   *http.BasicAuth
+	auth   transport.AuthMethod
 	branch string
 	dir    string
 	push   bool
 }
 
-func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error) {
-	auth := &http.BasicAuth{
+func newHttpAuth(cfg *config.GitConfig) transport.AuthMethod {
+	return &http.BasicAuth{
 		Username: cfg.Username,
 		Password: cfg.Password,
 	}
+}
 
+func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error) {
+	var auth transport.AuthMethod
+	switch cfg.Protocol {
+	case "https":
+		auth = newHttpAuth(cfg)
+	case "http":
+		auth = newHttpAuth(cfg)
+	case "ssh":
+		pKey, err := ssh.NewPublicKeysFromFile("git", cfg.SSHPrivateKeyPath, cfg.Password)
+		if err != nil {
+			return nil, err
+		}
+		auth = pKey
+	default:
+		return nil, errors.New("unsupported protocol")
+	}
 	dir := cfg.RepositoryPath
 	if strings.HasSuffix(dir, "/") {
 		dir = dir + cfg.RepositoryFolder

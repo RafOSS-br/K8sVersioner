@@ -77,14 +77,15 @@ type ResourceFilter struct {
 }
 
 type GitConfig struct {
-	Protocol         string `json:"protocol" validate:"required,oneof=http https ssh"` // Protocol is the protocol to use to clone and push to the git repository
-	RepositoryURL    string `json:"repositoryUrl" validate:"required,url"`             // RepositoryURL is the URL of the git repository
-	Branch           string `json:"branch" validate:"required"`                        // Branch is the branch to clone and push to the git repository
-	Username         string `json:"username" validate:"required"`                      // Username is the username to authenticate with the git repository
-	Password         string `json:"password" validate:"required"`                      // Password is the password to authenticate with the git repository
-	RepositoryPath   string `json:"repositoryPath" validate:"required,dir"`            // RepositoryPath is the path to the local git repository
-	RepositoryFolder string `json:"repositoryFolder" validate:"required"`              // RepositoryFolder is the folder to store the resources in the git repository
-	DryRun           bool   `json:"dryRun"`                                            // DryRun is a flag to enable dry-run mode. In this mode, the resources are not pushed to the git repository
+	Protocol          string `json:"protocol" validate:"required,oneof=http https ssh"`            // Protocol is the protocol to use to clone and push to the git repository
+	RepositoryURL     string `json:"repositoryUrl" validate:"required,url"`                        // RepositoryURL is the URL of the git repository
+	Branch            string `json:"branch" validate:"required"`                                   // Branch is the branch to clone and push to the git repository
+	Username          string `json:"username" validate:"required_if=Protocol http Protocol https"` // Username is required for HTTP/HTTPS protocols
+	Password          string `json:"password" validate:"required_if=Protocol http Protocol https"` // Password or PAT is required for HTTP/HTTPS protocols
+	SSHPrivateKeyPath string `json:"sshPrivateKeyPath" validate:"required_if=Protocol ssh"`        // SSHPrivateKeyPath is required if Protocol is ssh
+	RepositoryPath    string `json:"repositoryPath" validate:"required,dir"`                       // RepositoryPath is the path to the local git repository
+	RepositoryFolder  string `json:"repositoryFolder" validate:"required"`                         // RepositoryFolder is the folder to store the resources in the git repository
+	DryRun            bool   `json:"dryRun"`                                                       // DryRun is a flag to enable dry-run mode. In this mode, the resources are not pushed to the git repository
 }
 
 func HandleValidationErrors(ctx context.Context, err error) bool {
