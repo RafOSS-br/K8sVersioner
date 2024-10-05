@@ -34,17 +34,26 @@ func newHttpAuth(cfg *config.GitConfig) transport.AuthMethod {
 
 func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error) {
 	var auth transport.AuthMethod
+	var url string
 	switch cfg.Protocol {
 	case "https":
 		auth = newHttpAuth(cfg)
+		url = "https://" + cfg.RepositoryURL
 	case "http":
 		auth = newHttpAuth(cfg)
+		url = "http://" + cfg.RepositoryURL
 	case "ssh":
 		pKey, err := ssh.NewPublicKeysFromFile("git", cfg.SSHPrivateKeyPath, cfg.Password)
 		if err != nil {
 			return nil, err
 		}
 		auth = pKey
+		if strings.Contains(cfg.RepositoryURL, "@") {
+			if user := strings.Split(cfg.RepositoryURL, "@")[0]; user != "" {
+				cfg.Username = user
+			}
+		}
+		url = cfg.RepositoryURL
 	default:
 		return nil, errors.New("unsupported protocol")
 	}
@@ -64,7 +73,7 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		repo, err = git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
-			URL:           cfg.Protocol + "://" + cfg.RepositoryURL,
+			URL:           url,
 			ReferenceName: plumbing.ReferenceName("refs/heads/" + cfg.Branch),
 			Auth:          auth,
 		})
