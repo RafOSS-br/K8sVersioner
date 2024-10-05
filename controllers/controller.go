@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"k8s-git-operator/config"
-	"k8s-git-operator/git"
-	"k8s-git-operator/kubernetes"
+	"github.com/RafOSS-br/K8sVersioner/config"
+	"github.com/RafOSS-br/K8sVersioner/git"
+	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"

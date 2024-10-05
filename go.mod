@@ -1,4 +1,4 @@
-module k8s-git-operator
+module github.com/RafOSS-br/K8sVersioner
 
 go 1.22.6
 

@@ -9,8 +9,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"k8s-git-operator/config"
-	"k8s-git-operator/controllers"
+	"github.com/RafOSS-br/K8sVersioner/config"
+	"github.com/RafOSS-br/K8sVersioner/controllers"
 )
 
 func main() {

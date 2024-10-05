@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"k8s-git-operator/config"
+	"github.com/RafOSS-br/K8sVersioner/config"
 
 	"github.com/go-git/go-git/v5"
 	gitConfig "github.com/go-git/go-git/v5/config"
