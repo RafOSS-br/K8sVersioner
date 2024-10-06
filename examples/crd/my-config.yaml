@@ -15,4 +15,4 @@ spec:
     team: devops
   gitRef: my-gitconfig
   kubeConfig: /path/to/kubeconfig
-  folderStructure: /output/structure
+  folderStructure: "{{ .Namespace }}/{{ .ResourceType }}/{{ .ResourceName }}.yaml"

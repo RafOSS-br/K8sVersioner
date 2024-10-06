@@ -1,9 +1,11 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"text/template"
 	"time"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
@@ -256,14 +258,41 @@ func matchFilters(item *unstructured.Unstructured, labels, annotations map[strin
 	return true
 }
 
-// generateFilePath(structure string, item *unstructured.Unstructured) string
-func generateFilePath(_ string, item *unstructured.Unstructured) string {
-	// Simple example of path generation
+// generateFilePath generates the file path based on the folder structure template
+func generateFilePath(structure string, item *unstructured.Unstructured) string {
+	// Extract namespace, resource type, and resource name from the input object
 	namespace := item.GetNamespace()
 	if namespace == "" {
 		namespace = "all"
 	}
 	resourceType := item.GetKind()
 	resourceName := item.GetName()
-	return fmt.Sprintf("%s/%s/%s.yaml", namespace, resourceType, resourceName)
+
+	// Parse the provided template structure
+	templ, err := template.New("path").Parse(structure)
+	if err != nil {
+		log.Error().Err(err).Msg("Error parsing folder structure template")
+		return ""
+	}
+
+	// Prepare the data to fill the template with proper capitalization for template keys
+	data := struct {
+		Namespace,
+		ResourceType,
+		ResourceName string
+	}{
+		Namespace:    namespace,
+		ResourceType: resourceType,
+		ResourceName: resourceName,
+	}
+
+	// Execute the template and capture the output
+	var b bytes.Buffer
+	if err := templ.Execute(&b, data); err != nil {
+		log.Error().Err(err).Msg("Error executing folder structure template")
+		return ""
+	}
+
+	// Return the generated file path
+	return b.String()
 }
