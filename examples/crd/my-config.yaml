@@ -8,9 +8,6 @@ spec:
   includeResource:
     - name: Deployment
       apiVersion: apps/v1
-  excludeResource:
-    - name: Service
-      apiVersion: v1
   labels:
     app: my-app
   outputType: yaml
