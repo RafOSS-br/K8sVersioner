@@ -80,6 +80,7 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 		gitConfig *config.GitConfig
 		ok        bool
 	)
+
 	for _, cfgStore := range cfgMap {
 		gitConfig, ok = gitMap[cfgStore.Spec.GitRef+config.MapKeySeparator+cfgStore.Namespace]
 		if !ok {
@@ -91,10 +92,11 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 			log.Error().Err(err).Msg("Error creating Git client")
 			continue
 		}
-
-		if err := sync(ctx, cfgStore, dynClient, mapper, gitClient); err != nil {
-			log.Error().Err(err).Msg("Error synchronizing resources")
-			continue
+		for _, resFilter := range cfgStore.Spec.IncludeResource {
+			if err := sync(ctx, cfgStore, resFilter, dynClient, mapper, gitClient); err != nil {
+				log.Error().Err(err).Msg("Error synchronizing resources")
+				continue
+			}
 		}
 	}
 
@@ -102,81 +104,108 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 	return nil
 }
 
-func sync(ctx context.Context, cfg *config.Config, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, gitClient *git.GitClient) error {
-	for _, resFilter := range cfg.Spec.IncludeResource {
-		var gvk schema.GroupVersionKind
-		switch {
-		case resFilter.Name == "*" || resFilter.Name == "":
-			log.Error().Str("resource", resFilter.Name).Str("apiVersion", resFilter.APIVersion).Msg(fmt.Sprintf("Resource name cannot be \"%s\"", resFilter.Name))
-			continue
-		case resFilter.APIVersion == "*":
-			log.Error().Str("resource", resFilter.Name).Str("apiVersion", resFilter.APIVersion).Msg(fmt.Sprintf("API version cannot be \"%s\"", resFilter.APIVersion))
-			continue
-		default:
-			gvk = schema.FromAPIVersionAndKind(resFilter.APIVersion, resFilter.Name)
-		}
+// sync synchronizes Kubernetes resources based on the provided configuration
+func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilter, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, gitClient *git.GitClient) error {
+	// Determine namespaces to process
+	namespaces, err := determineNamespaces(ctx, cfg.Namespace, dynClient)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to determine namespaces")
+		return err
+	}
+
+	var gvkList []schema.GroupVersionKind
+
+	// Specific GroupVersionKind
+	gvk := schema.FromAPIVersionAndKind(resFilter.APIVersion, resFilter.Name)
+	gvkList = append(gvkList, gvk)
+
+	for _, gvk := range gvkList {
 		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if err != nil {
-			log.Error().Err(err).Msgf("Error getting mapping for %s", resFilter.Name)
+			log.Error().
+				Err(err).
+				Str("kind", gvk.Kind).
+				Msg("Error getting REST mapping")
 			continue
 		}
 
-		var namespace string
-		if cfg.Namespace != "" && cfg.Namespace != "all" {
-			namespace = cfg.Namespace
-		} else {
-			namespace = ""
-		}
+		for _, namespace := range namespaces {
+			resourceClient := dynClient.Resource(mapping.Resource).Namespace(namespace)
 
-		resourceClient := dynClient.Resource(mapping.Resource).Namespace(namespace)
-
-		list, err := resourceClient.List(ctx, v1.ListOptions{})
-		if err != nil {
-			log.Error().Err(err).Msgf("Error listing resources %s", resFilter.Name)
-			continue
-		}
-
-		for _, item := range list.Items {
-			// Apply label and annotation filters if necessary
-			if !matchFilters(&item, cfg.Labels, cfg.Annotations) {
+			list, err := resourceClient.List(ctx, v1.ListOptions{})
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("resource", mapping.Resource.Resource).
+					Str("namespace", namespace).
+					Msg("Error listing resources")
 				continue
 			}
 
-			// Exclude resources if they are in the exclusion list
-			if isExcluded(&item, cfg.Spec.ExcludeResource) {
-				continue
-			}
-			var data []byte
-
-			// Verify if load managed fields
-			if !resFilter.WithManagedFields {
-				item.SetManagedFields(nil)
-			}
-
-			// Verify if load status
-			if !resFilter.WithStatusField {
-				delete(item.Object, "status")
-			}
-
-			if cfg.Spec.OutputType == "yaml" {
-				data, err = yaml.Marshal(item.Object)
-				if err != nil {
-					log.Error().Err(err).Msg("Error serializing the resource")
+			for _, item := range list.Items {
+				// Apply label and annotation filters if necessary
+				if !matchFilters(&item, cfg.Labels, cfg.Annotations) {
 					continue
 				}
-			} else {
-				data, err = json.MarshalIndent(item.Object, "", "  ")
-				if err != nil {
-					log.Error().Err(err).Msg("Error serializing the resource")
+
+				// Exclude resources if they are in the exclusion list
+				if isExcluded(&item, cfg.Spec.ExcludeResource) {
 					continue
 				}
-			}
 
-			path := generateFilePath(cfg.Spec.FolderStructure, &item)
+				var data []byte
 
-			if err := gitClient.SaveResource(ctx, path, data); err != nil {
-				log.Error().Err(err).Msg("Error saving the resource to Git")
-				continue
+				// Remove managed fields if not required
+				if !resFilter.WithManagedFields {
+					item.SetManagedFields(nil)
+				}
+
+				// Remove status field if not required
+				if !resFilter.WithStatusField {
+					delete(item.Object, "status")
+				}
+
+				// Serialize the resource
+				if cfg.Spec.OutputType == "yaml" {
+					data, err = yaml.Marshal(item.Object)
+					if err != nil {
+						log.Error().
+							Err(err).
+							Str("resource", mapping.Resource.Resource).
+							Str("name", item.GetName()).
+							Msg("Error serializing the resource to YAML")
+						continue
+					}
+				} else {
+					data, err = json.MarshalIndent(item.Object, "", "  ")
+					if err != nil {
+						log.Error().
+							Err(err).
+							Str("resource", mapping.Resource.Resource).
+							Str("name", item.GetName()).
+							Msg("Error serializing the resource to JSON")
+						continue
+					}
+				}
+
+				// Generate file path based on folder structure
+				path := generateFilePath(cfg.Spec.FolderStructure, &item)
+
+				// Save the resource to Git
+				if err := gitClient.SaveResource(ctx, path, data); err != nil {
+					log.Error().
+						Err(err).
+						Str("path", path).
+						Msg("Error saving the resource to Git")
+					continue
+				}
+
+				log.Info().
+					Str("resource", mapping.Resource.Resource).
+					Str("name", item.GetName()).
+					Str("namespace", item.GetNamespace()).
+					Str("path", path).
+					Msg("Resource saved to Git")
 			}
 		}
 	}
@@ -184,13 +213,47 @@ func sync(ctx context.Context, cfg *config.Config, dynClient dynamic.Interface, 
 	// Commit and push the changes
 	message := fmt.Sprintf("Resource synchronization on %s", time.Now().Format(time.RFC3339))
 	if err := gitClient.CommitAndPush(ctx, message); err != nil {
-		log.Error().Err(err).Msg("Error committing and pushing to Git")
+		log.Error().
+			Err(err).
+			Msg("Error committing and pushing to Git")
 		return err
 	}
-
-	log.Info().Msg("Synchronization completed successfully")
 	return nil
 }
+
+// determineNamespaces determines the list of namespaces to process based on the configuration
+func determineNamespaces(ctx context.Context, namespace string, dynClient dynamic.Interface) ([]string, error) {
+	if namespace == "*" || namespace == "all" {
+		nsList, err := dynClient.Resource(schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}).List(ctx, v1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list namespaces: %w", err)
+		}
+		namespaces := make([]string, 0, len(nsList.Items))
+		for _, ns := range nsList.Items {
+			namespaces = append(namespaces, ns.GetName())
+		}
+		return namespaces, nil
+	} else if namespace != "" {
+		return []string{namespace}, nil
+	} else {
+		// Cluster-wide resources (no namespace)
+		return []string{""}, nil
+	}
+}
+
+// // deleteStatusField removes the "status" field from the resource object
+// func deleteStatusField(obj map[string]interface{}) map[string]interface{} {
+// 	delete(obj, "status")
+// 	return obj
+// }
+
+// // serializeResource serializes the resource object based on the specified output type
+// func serializeResource(item *unstructured.Unstructured, outputType string) ([]byte, error) {
+// 	if outputType == "yaml" {
+// 		return yaml.Marshal(item.Object)
+// 	}
+// 	return json.MarshalIndent(item.Object, "", "  ")
+// }
 
 // matchFilters(item *unstructured.Unstructured, labels, annotations map[string]string)
 func matchFilters(_ *unstructured.Unstructured, _, _ map[string]string) bool {
