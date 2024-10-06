@@ -261,7 +261,7 @@ func generateFilePath(_ string, item *unstructured.Unstructured) string {
 	// Simple example of path generation
 	namespace := item.GetNamespace()
 	if namespace == "" {
-		namespace = "cluster"
+		namespace = "all"
 	}
 	resourceType := item.GetKind()
 	resourceName := item.GetName()
