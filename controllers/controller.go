@@ -237,8 +237,22 @@ func determineNamespaces(ctx context.Context, namespace string, dynClient dynami
 }
 
 // matchFilters(item *unstructured.Unstructured, labels, annotations map[string]string)
-func matchFilters(_ *unstructured.Unstructured, _, _ map[string]string) bool {
+func matchFilters(item *unstructured.Unstructured, labels, annotations map[string]string) bool {
 	// Implement logic to filter by labels and annotations
+	if len(labels) > 0 {
+		for key, value := range labels {
+			if item.GetLabels()[key] != value {
+				return false
+			}
+		}
+	}
+	if len(annotations) > 0 {
+		for key, value := range annotations {
+			if item.GetAnnotations()[key] != value {
+				return false
+			}
+		}
+	}
 	return true
 }
 
