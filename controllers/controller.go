@@ -144,7 +144,7 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 
 			for _, item := range list.Items {
 				// Apply label and annotation filters if necessary
-				if !matchFilters(&item, cfg.Labels, cfg.Annotations) {
+				if !matchFilters(&item, cfg.Spec.Labels, cfg.Spec.Annotations) {
 					continue
 				}
 
