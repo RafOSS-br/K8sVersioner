@@ -13,21 +13,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var kubeControllerSubCmd = &cobra.Command{
-	Use:   "kube-controller",
-	Short: "KubeController is a tool to manage Kubernetes resources versions",
+var kubeOperatorSubCmd = &cobra.Command{
+	Use:   "kube-operator",
+	Short: "KubeOperator is a command to manage K8sVersioner using CRDs",
 	Run: func(cmd *cobra.Command, args []string) {
 		run(
 			&config.EnvironmentConfig{
 				OneShot:       oneShot,
 				ExecutionMode: "kube-controller",
 			},
-			kubeController,
+			kubeOperator,
 		)
 	},
 }
 
-func kubeController(envConf *config.EnvironmentConfig) {
+func kubeOperator(envConf *config.EnvironmentConfig) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

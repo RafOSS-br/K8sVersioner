@@ -25,7 +25,7 @@ func Execute() {
 func init() {
 	// Add subcommands to the root command
 	rootCmd.PersistentFlags().BoolVarP(&oneShot, "one-shot", "o", false, "Run the command only once")
-	rootCmd.AddCommand(kubeControllerSubCmd)
+	rootCmd.AddCommand(kubeOperatorSubCmd)
 }
 
 func run(envConf *config.EnvironmentConfig, f func(*config.EnvironmentConfig)) {
