@@ -113,7 +113,7 @@ type GitConfigSpec struct {
 	SSHPrivateKeyPath string `json:"sshPrivateKeyPath,omitempty" validate:"required_if=Protocol ssh"` // SSH Private Key Path
 	RepositoryPath    string `json:"repositoryPath" validate:"required"`                              // Repository Path
 	RepositoryFolder  string `json:"repositoryFolder" validate:"required"`                            // Repository Folder
-	DryRun            bool   `json:"dryRun,omitempty" validate:"required"`                            // Dry run mode
+	DryRun            bool   `json:"dryRun,omitempty"`                                                // Dry run mode
 }
 
 type EnvironmentConfig struct {
