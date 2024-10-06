@@ -4,15 +4,24 @@ metadata:
   name: my-config
   namespace: default
 spec:
+  # Namespace to use
   namespace: default
-  includeResource:
-    - name: Deployment
-      apiVersion: apps/v1
-  labels:
-    app: my-app
-  outputType: yaml
-  annotations:
-    team: devops
+  # Options: yaml, json
+  outputType: yaml 
+  # Git reference to use
   gitRef: my-gitconfig
+  # Path to kubeconfig file
   kubeConfig: /path/to/kubeconfig
+  # Options: {{ .Namespace }}, {{ .ResourceType }}, {{ .ResourceName }}
   folderStructure: "{{ .Namespace }}/{{ .ResourceType }}/{{ .ResourceName }}.yaml"
+  # Resources to include
+  includeResource:
+    # Resource name
+    - name: Deployment
+      # API version
+      apiVersion: apps/v1
+#   #(Optional) Labels and annotations to use
+#   labels:
+#     app: my-app
+#   annotations:
+#     team: devops

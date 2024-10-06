@@ -48,11 +48,6 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 			return nil, err
 		}
 		auth = pKey
-		if strings.Contains(cfg.Spec.RepositoryURL, "@") {
-			if user := strings.Split(cfg.Spec.RepositoryURL, "@")[0]; user != "" {
-				cfg.Spec.Username = user
-			}
-		}
 		url = cfg.Spec.RepositoryURL
 	default:
 		return nil, errors.New("unsupported protocol")

@@ -4,10 +4,23 @@ metadata:
   name: my-gitconfig
   namespace: default
 spec:
-  protocol: ssh
-  repositoryUrl: github.com:example/repo.git
+  # Branch to use
   branch: main
-  sshPrivateKeyPath: /path/to/ssh/key
+  # Path to repository
   repositoryPath: /path/to/repo
+  # Folder name to use
   repositoryFolder: configs
+  # Dry run mode, if true, not push to repository
   dryRun: false
+  # Options: ssh, https
+  protocol: ssh
+  # Repository URL. Note that this is not the same as repositoryPath
+  # When using ssh, use the format "github.com:example/repo.git" instead of "git@github.com:example/repo.git".
+  # The value to the left of @ is the username.
+  repositoryUrl: github.com:example/repo.git
+  # Path to SSH private key. Is required if protocol is ssh
+  sshPrivateKeyPath: /path/to/ssh/key
+  # User to use. If protocol is ssh, normally user is git
+  username: git
+  # Password to use.
+  password: password
