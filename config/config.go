@@ -83,7 +83,6 @@ func (cm *ConfigManager) Reload(path string, dynamicClient *dynamic.DynamicClien
 type ConfigSpec struct {
 	Namespace       string            `json:"namespace" validate:"required"`                  // Namespace to watch
 	IncludeResource []ResourceFilter  `json:"includeResource,omitempty" validate:"dive"`      // Resources to include
-	ExcludeResource []ResourceFilter  `json:"excludeResource,omitempty" validate:"dive"`      // Resources to exclude
 	Labels          map[string]string `json:"labels,omitempty"`                               // Label filters
 	OutputType      string            `json:"outputType" validate:"required,oneof=yaml json"` // Output type
 	Annotations     map[string]string `json:"annotations,omitempty"`                          // Annotation filters

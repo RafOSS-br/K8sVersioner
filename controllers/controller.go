@@ -148,11 +148,6 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 					continue
 				}
 
-				// Exclude resources if they are in the exclusion list
-				if isExcluded(&item, cfg.Spec.ExcludeResource) {
-					continue
-				}
-
 				var data []byte
 
 				// Remove managed fields if not required
@@ -259,12 +254,6 @@ func determineNamespaces(ctx context.Context, namespace string, dynClient dynami
 func matchFilters(_ *unstructured.Unstructured, _, _ map[string]string) bool {
 	// Implement logic to filter by labels and annotations
 	return true
-}
-
-// isExcluded(item *unstructured.Unstructured, exclude []config.ResourceFilter)
-func isExcluded(_ *unstructured.Unstructured, _ []config.ResourceFilter) bool {
-	// Implement logic to check if the resource is in the exclusion list
-	return false
 }
 
 // generateFilePath(structure string, item *unstructured.Unstructured) string
