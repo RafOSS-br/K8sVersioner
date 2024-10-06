@@ -27,54 +27,54 @@ type GitClient struct {
 
 func newHttpAuth(cfg *config.GitConfig) transport.AuthMethod {
 	return &http.BasicAuth{
-		Username: cfg.Username,
-		Password: cfg.Password,
+		Username: cfg.Spec.Username,
+		Password: cfg.Spec.Password,
 	}
 }
 
 func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error) {
 	var auth transport.AuthMethod
 	var url string
-	switch cfg.Protocol {
+	switch cfg.Spec.Protocol {
 	case "https":
 		auth = newHttpAuth(cfg)
-		url = "https://" + cfg.RepositoryURL
+		url = "https://" + cfg.Spec.RepositoryURL
 	case "http":
 		auth = newHttpAuth(cfg)
-		url = "http://" + cfg.RepositoryURL
+		url = "http://" + cfg.Spec.RepositoryURL
 	case "ssh":
-		pKey, err := ssh.NewPublicKeysFromFile("git", cfg.SSHPrivateKeyPath, cfg.Password)
+		pKey, err := ssh.NewPublicKeysFromFile("git", cfg.Spec.SSHPrivateKeyPath, cfg.Spec.Password)
 		if err != nil {
 			return nil, err
 		}
 		auth = pKey
-		if strings.Contains(cfg.RepositoryURL, "@") {
-			if user := strings.Split(cfg.RepositoryURL, "@")[0]; user != "" {
-				cfg.Username = user
+		if strings.Contains(cfg.Spec.RepositoryURL, "@") {
+			if user := strings.Split(cfg.Spec.RepositoryURL, "@")[0]; user != "" {
+				cfg.Spec.Username = user
 			}
 		}
-		url = cfg.RepositoryURL
+		url = cfg.Spec.RepositoryURL
 	default:
 		return nil, errors.New("unsupported protocol")
 	}
-	dir := cfg.RepositoryPath
+	dir := cfg.Spec.RepositoryPath
 	if strings.HasSuffix(dir, "/") {
-		dir = dir + cfg.RepositoryFolder
+		dir = dir + cfg.Spec.RepositoryFolder
 	} else {
-		dir = dir + "/" + cfg.RepositoryFolder
+		dir = dir + "/" + cfg.Spec.RepositoryFolder
 	}
 
 	var repo *git.Repository
 
 	push := true
-	if cfg.DryRun {
+	if cfg.Spec.DryRun {
 		push = false
 	}
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		repo, err = git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
 			URL:           url,
-			ReferenceName: plumbing.ReferenceName("refs/heads/" + cfg.Branch),
+			ReferenceName: plumbing.ReferenceName("refs/heads/" + cfg.Spec.Branch),
 			Auth:          auth,
 		})
 		if err != nil {
@@ -90,7 +90,7 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 	return &GitClient{
 		repo:   repo,
 		auth:   auth,
-		branch: cfg.Branch,
+		branch: cfg.Spec.Branch,
 		dir:    dir,
 		push:   push,
 	}, nil

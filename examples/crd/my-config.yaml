@@ -1,0 +1,21 @@
+apiVersion: example.com/v1alpha1
+kind: Config
+metadata:
+  name: my-config
+  namespace: default
+spec:
+  namespace: default
+  includeResource:
+    - name: Deployment
+      apiVersion: apps/v1
+  excludeResource:
+    - name: Service
+      apiVersion: v1
+  labels:
+    app: my-app
+  outputType: yaml
+  annotations:
+    team: devops
+  gitRef: my-gitconfig
+  kubeConfig: /path/to/kubeconfig
+  folderStructure: /output/structure

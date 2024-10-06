@@ -10,7 +10,11 @@
             "request": "launch",
             "mode": "auto",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/cmd/main.go"
+            "program": "${workspaceFolder}/main.go",
+            "args": [
+                "kube-controller",
+                "--one-shot"
+            ]
         }
     ]
 }

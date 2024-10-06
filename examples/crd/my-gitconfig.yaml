@@ -1,0 +1,13 @@
+apiVersion: example.com/v1alpha1
+kind: GitConfig
+metadata:
+  name: my-gitconfig
+  namespace: default
+spec:
+  protocol: ssh
+  repositoryUrl: github.com:example/repo.git
+  branch: main
+  sshPrivateKeyPath: /path/to/ssh/key
+  repositoryPath: /path/to/repo
+  repositoryFolder: configs
+  dryRun: false

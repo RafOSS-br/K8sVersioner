@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/RafOSS-br/K8sVersioner/git"
 	"github.com/RafOSS-br/K8sVersioner/kubernetes"
+	"github.com/go-playground/validator/v10"
 
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
@@ -21,56 +21,47 @@ import (
 	"k8s.io/client-go/restmapper"
 )
 
-func StartController(ctx context.Context, cfgManager *config.ConfigManager) error {
-	// Creating the Kubernetes config
-	kubeCfg, err := kubernetes.GetKubernetesConfig()
-	if err != nil {
-		return err
+type ControllerArgs struct {
+	CfgManager        *config.ConfigManager     `validate:"required"`
+	K8sClient         *kubernetes.K8sClient     `validate:"required"`
+	EnvironmentConfig *config.EnvironmentConfig `validate:"required"`
+}
+
+func StartController(ctx context.Context, args ControllerArgs) error {
+
+	validate := validator.New()
+	if err := validate.Struct(args); err != nil {
+		return fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	cfg := cfgManager.GetConfig()
+	var (
+		cfgManager = args.CfgManager
+		k8sClient  = args.K8sClient
+		env        = args.EnvironmentConfig
+	)
 
-	// Creating the dynamic client
-	dynClient, err := dynamic.NewForConfig(kubeCfg)
-	if err != nil {
-		return err
-	}
-
-	// Creating the clientset
-	client, err := kubernetes.GetClientConfig(kubeCfg)
-	if err != nil {
-		return err
-	}
+	client := k8sClient.GetClientset()
+	dynClient := k8sClient.GetDynamicClient()
 
 	cachedDiscovery := memory.NewMemCacheClient(client)
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscovery)
 
-	// Creating the Git client
-	gitClient, err := git.NewGitClient(ctx, &cfg.Git)
-	if err != nil {
-		return err
-	}
 	log.Info().Msg("Git client created successfully")
+	if env.OneShot {
+		if err := syncResources(ctx, cfgManager, dynClient, mapper); err != nil {
+			log.Error().Err(err).Msg("Error synchronizing resources")
+		}
+		return nil
+	}
 	// Main loop
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	log.Info().Msg("Starting main controller loop")
-
-	if cfg.OneShot {
-		log.Info().Msg("Dry run mode enabled")
-		err := syncResources(ctx, cfgManager, dynClient, mapper, gitClient)
-		if err != nil {
-			log.Error().Err(err).Msg("Error synchronizing resources")
-		}
-		os.Exit(0)
-		return nil
-	}
-
 	for {
 		log.Info().Msg("Waiting for next synchronization cycle")
 		select {
 		case <-ticker.C:
-			if err := syncResources(ctx, cfgManager, dynClient, mapper, gitClient); err != nil {
+			if err := syncResources(ctx, cfgManager, dynClient, mapper); err != nil {
 				log.Error().Err(err).Msg("Error synchronizing resources")
 			}
 		case <-ctx.Done():
@@ -79,15 +70,40 @@ func StartController(ctx context.Context, cfgManager *config.ConfigManager) erro
 	}
 }
 
-func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, gitClient *git.GitClient) error {
+func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper) error {
 	log.Info().Msg("Starting resource synchronization")
 
-	cfManager.RLock()
-	defer cfManager.RUnlock()
+	cfgMap := cfManager.GetConfigMap()
+	gitMap := cfManager.GetGitMap()
 
-	cfg := cfManager.GetConfig()
+	var (
+		gitConfig *config.GitConfig
+		ok        bool
+	)
+	for _, cfgStore := range cfgMap {
+		gitConfig, ok = gitMap[cfgStore.Spec.GitRef+config.MapKeySeparator+cfgStore.Namespace]
+		if !ok {
+			log.Error().Str("config", cfgStore.Name).Str("namespace", cfgStore.Namespace).Msg("Git configuration not found")
+			continue
+		}
+		gitClient, err := git.NewGitClient(ctx, gitConfig)
+		if err != nil {
+			log.Error().Err(err).Msg("Error creating Git client")
+			continue
+		}
 
-	for _, resFilter := range cfg.IncludeResource {
+		if err := sync(ctx, cfgStore, dynClient, mapper, gitClient); err != nil {
+			log.Error().Err(err).Msg("Error synchronizing resources")
+			continue
+		}
+	}
+
+	log.Info().Msg("Resource synchronization completed successfully")
+	return nil
+}
+
+func sync(ctx context.Context, cfg *config.Config, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, gitClient *git.GitClient) error {
+	for _, resFilter := range cfg.Spec.IncludeResource {
 		var gvk schema.GroupVersionKind
 		switch {
 		case resFilter.Name == "*" || resFilter.Name == "":
@@ -127,7 +143,7 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 			}
 
 			// Exclude resources if they are in the exclusion list
-			if isExcluded(&item, cfg.ExcludeResource) {
+			if isExcluded(&item, cfg.Spec.ExcludeResource) {
 				continue
 			}
 			var data []byte
@@ -142,7 +158,7 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 				delete(item.Object, "status")
 			}
 
-			if cfg.OutputType == "yaml" {
+			if cfg.Spec.OutputType == "yaml" {
 				data, err = yaml.Marshal(item.Object)
 				if err != nil {
 					log.Error().Err(err).Msg("Error serializing the resource")
@@ -156,7 +172,7 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 				}
 			}
 
-			path := generateFilePath(cfg.FolderStructure, &item)
+			path := generateFilePath(cfg.Spec.FolderStructure, &item)
 
 			if err := gitClient.SaveResource(ctx, path, data); err != nil {
 				log.Error().Err(err).Msg("Error saving the resource to Git")
