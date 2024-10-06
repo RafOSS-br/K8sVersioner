@@ -236,20 +236,6 @@ func determineNamespaces(ctx context.Context, namespace string, dynClient dynami
 	}
 }
 
-// // deleteStatusField removes the "status" field from the resource object
-// func deleteStatusField(obj map[string]interface{}) map[string]interface{} {
-// 	delete(obj, "status")
-// 	return obj
-// }
-
-// // serializeResource serializes the resource object based on the specified output type
-// func serializeResource(item *unstructured.Unstructured, outputType string) ([]byte, error) {
-// 	if outputType == "yaml" {
-// 		return yaml.Marshal(item.Object)
-// 	}
-// 	return json.MarshalIndent(item.Object, "", "  ")
-// }
-
 // matchFilters(item *unstructured.Unstructured, labels, annotations map[string]string)
 func matchFilters(_ *unstructured.Unstructured, _, _ map[string]string) bool {
 	// Implement logic to filter by labels and annotations
