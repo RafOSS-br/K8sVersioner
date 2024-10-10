@@ -34,12 +34,12 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	k8sClient, err := kubernetes.GetKubernetesConfig()
+	factory, err := kubernetes.NewFactory()
 	if err != nil {
 		panic(err)
 	}
 
-	cfg, err := config.LoadConfigStore(k8sClient.GetDynamicClient())
+	cfg, err := config.LoadConfigStore(factory.GetDynamicClient())
 	if err != nil {
 		if config.HandleValidationErrors(ctx, err) {
 			os.Exit(1)
@@ -51,7 +51,7 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 	go func() {
 		if err := controllers.StartController(ctx, controllers.ControllerArgs{
 			CfgManager:        config.NewConfigManager(cfg),
-			K8sClient:         k8sClient,
+			Factory:           factory,
 			EnvironmentConfig: envConf,
 		}); err != nil {
 			log.Error().Err(err).Msg("Error starting controller")

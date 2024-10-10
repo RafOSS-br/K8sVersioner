@@ -7,12 +7,12 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type K8sClient struct {
+type Factory struct {
 	clientset     *kubernetes.Clientset
 	dynamicClient *dynamic.DynamicClient
 }
 
-func GetKubernetesConfig() (*K8sClient, error) {
+func NewFactory() (*Factory, error) {
 	var config *rest.Config
 	var err error
 
@@ -34,17 +34,17 @@ func GetKubernetesConfig() (*K8sClient, error) {
 		return nil, err
 	}
 
-	return &K8sClient{
+	return &Factory{
 		clientset:     clientset,
 		dynamicClient: dynamicClient,
 	}, nil
 }
 
-func (k *K8sClient) GetClientset() *kubernetes.Clientset {
+func (k *Factory) GetClientset() *kubernetes.Clientset {
 	return k.clientset
 }
 
-func (k *K8sClient) GetDynamicClient() *dynamic.DynamicClient {
+func (k *Factory) GetDynamicClient() *dynamic.DynamicClient {
 	return k.dynamicClient
 }
 func GetClientConfig(cfg *rest.Config) (*kubernetes.Clientset, error) {

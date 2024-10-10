@@ -25,7 +25,7 @@ import (
 
 type ControllerArgs struct {
 	CfgManager        *config.ConfigManager     `validate:"required"`
-	K8sClient         *kubernetes.K8sClient     `validate:"required"`
+	Factory           *kubernetes.Factory       `validate:"required"`
 	EnvironmentConfig *config.EnvironmentConfig `validate:"required"`
 }
 
@@ -38,12 +38,12 @@ func StartController(ctx context.Context, args ControllerArgs) error {
 
 	var (
 		cfgManager = args.CfgManager
-		k8sClient  = args.K8sClient
+		factory    = args.Factory
 		env        = args.EnvironmentConfig
 	)
 
-	client := k8sClient.GetClientset()
-	dynClient := k8sClient.GetDynamicClient()
+	client := factory.GetClientset()
+	dynClient := factory.GetDynamicClient()
 
 	cachedDiscovery := memory.NewMemCacheClient(client)
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscovery)
