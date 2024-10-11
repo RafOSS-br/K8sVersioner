@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"text/template"
-	"time"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/RafOSS-br/K8sVersioner/git"
@@ -66,24 +65,7 @@ func StartController(ctx context.Context, args ControllerArgs) error {
 
 	// Set up informers for resources
 	go setupInformers(ctx, dynClient, mapper, resourcesToWatch, cfgManager)
-
-	// Main loop
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	log.Info().Msg("Starting main controller loop")
-	for {
-		args.CfgManager.Lock()
-		log.Info().Msg("Waiting for next synchronization cycle")
-		select {
-		case <-ticker.C:
-			if err := syncResources(ctx, cfgManager, dynClient, mapper); err != nil {
-				log.Error().Err(err).Msg("Error synchronizing resources")
-			}
-		case <-ctx.Done():
-			return nil
-		}
-		args.CfgManager.Unlock()
-	}
+	return nil
 }
 
 // getResourcesToWatch collects resources to watch based on the configurations
@@ -294,7 +276,7 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 	}
 
 	// Commit and push the changes
-	message := fmt.Sprintf("Resource synchronization on %s", time.Now().Format(time.RFC3339))
+	message := fmt.Sprintf("Resources synchronized for %s/%s", cfg.Namespace, cfg.Name)
 	if err := gitClient.CommitAndPush(ctx, message); err != nil {
 		if err == git.ErrAlreadyUpToDate {
 			log.Warn().Err(err).Msg("No changes to commit")
@@ -365,6 +347,17 @@ func syncResource(ctx context.Context, cfg *config.Config, resFilter config.Reso
 		Str("path", path).
 		Msg("Resource saved to Git")
 
+	message := fmt.Sprintf("Resource %s/%s synchronized for %s/%s", item.GetNamespace(), item.GetName(),
+		cfg.Namespace, cfg.Name)
+
+	if err := gitClient.CommitAndPush(ctx, message); err != nil {
+		if err == git.ErrAlreadyUpToDate {
+			log.Warn().Err(err).Msg("No changes to commit")
+		} else {
+			log.Error().Err(err).Msg("Error committing and pushing to Git")
+		}
+		return err
+	}
 	return nil
 }
 

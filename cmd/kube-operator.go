@@ -57,7 +57,6 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 			log.Error().Err(err).Msg("Error starting controller")
 			os.Exit(1)
 		}
-		os.Exit(0)
 	}()
 
 	// Watching for configuration changes
