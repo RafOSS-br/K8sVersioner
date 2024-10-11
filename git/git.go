@@ -91,10 +91,23 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 	}, nil
 }
 
+var ErrAlreadyUpToDate = errors.New("already up to date")
+
 func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
 	w, err := g.repo.Worktree()
 	if err != nil {
 		return err
+	}
+
+	// Diff the changes
+	status, err := w.Status()
+	if err != nil {
+		return err
+	}
+
+	// If there are no changes, return
+	if status.IsClean() {
+		return ErrAlreadyUpToDate
 	}
 
 	// Adding all changes

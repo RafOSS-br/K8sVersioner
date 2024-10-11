@@ -296,6 +296,10 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 	// Commit and push the changes
 	message := fmt.Sprintf("Resource synchronization on %s", time.Now().Format(time.RFC3339))
 	if err := gitClient.CommitAndPush(ctx, message); err != nil {
+		if err == git.ErrAlreadyUpToDate {
+			log.Warn().Err(err).Msg("No changes to commit")
+			return nil
+		}
 		log.Error().
 			Err(err).
 			Msg("Error committing and pushing to Git")
