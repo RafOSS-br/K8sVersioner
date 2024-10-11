@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
-	"github.com/RafOSS-br/K8sVersioner/controllers"
+	"github.com/RafOSS-br/K8sVersioner/controller"
 	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -49,7 +49,7 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 	}
 
 	go func() {
-		if err := controllers.StartController(ctx, controllers.ControllerArgs{
+		if err := controller.StartController(ctx, controller.ControllerArgs{
 			CfgManager:        config.NewConfigManager(cfg),
 			Factory:           factory,
 			EnvironmentConfig: envConf,
@@ -60,11 +60,8 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 		os.Exit(0)
 	}()
 
-	// go func() {
-	// 	if err := config.WatchConfig(ctx, cfgManager, "config.json"); err != nil {
-	// 		log.Error().Err(err).Msg("Error monitoring configuration")
-	// 	}
-	// }()
+	// Watching for configuration changes
+	config.WatchConfig(ctx, config.NewConfigManager(cfg), factory)
 
 	// Waiting for signal to terminate
 	<-sigs

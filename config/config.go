@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 )
 
 const (
@@ -25,6 +27,22 @@ type ConfigManager struct {
 	cfg       []ConfigStore
 	gitMap    map[string]*GitConfig
 	configMap map[string]*Config
+}
+
+func (cm *ConfigManager) Lock() {
+	cm.mu.Lock()
+}
+
+func (cm *ConfigManager) Unlock() {
+	cm.mu.Unlock()
+}
+
+func (cm *ConfigManager) RLock() {
+	cm.mu.RLock()
+}
+
+func (cm *ConfigManager) RUnlock() {
+	cm.mu.RUnlock()
 }
 
 func (cm *ConfigManager) GetGitMap() map[string]*GitConfig {
@@ -65,7 +83,7 @@ func NewConfigManager(cfg []ConfigStore) *ConfigManager {
 	}
 }
 
-func (cm *ConfigManager) Reload(path string, dynamicClient *dynamic.DynamicClient) error {
+func (cm *ConfigManager) Reload(dynamicClient *dynamic.DynamicClient) error {
 	cfg, err := LoadConfigStore(dynamicClient)
 	if err != nil {
 		return err
@@ -78,6 +96,17 @@ func (cm *ConfigManager) Reload(path string, dynamicClient *dynamic.DynamicClien
 	cm.mu.Unlock()
 
 	return nil
+}
+
+func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.Factory) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cfg, err := LoadConfigStore(kubeFactory.GetDynamicClient())
+	if err != nil {
+		log.Error().Err(err).Msg("Error reloading configuration")
+		return
+	}
+	cm.cfg = cfg
 }
 
 type ConfigSpec struct {
@@ -262,33 +291,23 @@ func LoadConfigStore(dynamicClient *dynamic.DynamicClient) ([]ConfigStore, error
 	return pairs, nil
 }
 
-// func WatchConfig(ctx context.Context, cfg *ConfigManager, path string, dynamicClient *dynamic.DynamicClient) error {
-// 	watcher, err := fsnotify.NewWatcher()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer watcher.Close()
+// WatchConfig watches for changes in the Config resource
+func WatchConfig(ctx context.Context, cfgManager *ConfigManager, kubeFactory *kubernetes.Factory) {
+	dynClient := kubeFactory.GetDynamicClient()
 
-// 	err = watcher.Add(path)
-// 	if err != nil {
-// 		return err
-// 	}
+	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynClient, 0)
 
-// 	for {
-// 		select {
-// 		case event := <-watcher.Events:
-// 			if event.Op&fsnotify.Write == fsnotify.Write {
-// 				if err := cfg.Reload(path, dynamicClient); err != nil {
-// 					if HandleValidationErrors(ctx, err) {
-// 						continue
-// 					}
-// 					log.Error().Err(err).Msg("Error reloading configuration")
-// 				}
-// 			}
-// 		case err := <-watcher.Errors:
-// 			log.Error().Err(err).Msg("Watcher error")
-// 		case <-ctx.Done():
-// 			return nil
-// 		}
-// 	}
-// }
+	cfgInformer := factory.ForResource(ConfigGVR)
+	go kubernetes.Watch(ctx, cfgInformer, kubernetes.HandleInformer{
+		Add:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+		Del:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+		Update: func(oldObj, newObj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+	})
+
+	gitInformer := factory.ForResource(GitConfigGVR)
+	go kubernetes.Watch(ctx, gitInformer, kubernetes.HandleInformer{
+		Add:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+		Del:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+		Update: func(oldObj, newObj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+	})
+}
