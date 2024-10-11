@@ -63,9 +63,8 @@ func StartController(ctx context.Context, args ControllerArgs) error {
 		return err
 	}
 
-	// Set up informers for resources
-	go setupInformers(ctx, dynClient, mapper, resourcesToWatch, cfgManager)
-	return nil
+	// Set up informers for resources to watch and return
+	return setupInformers(ctx, dynClient, mapper, resourcesToWatch, cfgManager)
 }
 
 // getResourcesToWatch collects resources to watch based on the configurations
@@ -108,7 +107,7 @@ type ResourceWatchConfig struct {
 	ResFilter config.ResourceFilter
 }
 
-func setupInformers(ctx context.Context, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, resourcesToWatch map[schema.GroupVersionKind]map[string]*ResourceWatchConfig, cfgManager *config.ConfigManager) {
+func setupInformers(ctx context.Context, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, resourcesToWatch map[schema.GroupVersionKind]map[string]*ResourceWatchConfig, cfgManager *config.ConfigManager) error {
 	for gvk, nsConfigMap := range resourcesToWatch {
 		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if err != nil {
@@ -171,9 +170,10 @@ func setupInformers(ctx context.Context, dynClient dynamic.Interface, mapper *re
 			}
 
 			// Start watching in a separate goroutine
-			go kubernetes.Watch(ctx, informer, handleInformer)
+			return kubernetes.Watch(ctx, informer, handleInformer)
 		}
 	}
+	return nil
 }
 
 // getGitClientForConfig retrieves the Git client for a given configuration

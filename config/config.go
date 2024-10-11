@@ -298,16 +298,28 @@ func WatchConfig(ctx context.Context, cfgManager *ConfigManager, kubeFactory *ku
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynClient, 0)
 
 	cfgInformer := factory.ForResource(ConfigGVR)
-	go kubernetes.Watch(ctx, cfgInformer, kubernetes.HandleInformer{
-		Add:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
-		Del:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
-		Update: func(oldObj, newObj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
-	})
+	errHandler := func(cause error) {
+		if cause != nil {
+			log.Fatal().Err(cause).Msg("Error watching Config resource")
+		}
+	}
+
+	go func() {
+		err := kubernetes.Watch(ctx, cfgInformer, kubernetes.HandleInformer{
+			Add:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+			Del:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+			Update: func(oldObj, newObj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+		})
+		errHandler(err)
+	}()
 
 	gitInformer := factory.ForResource(GitConfigGVR)
-	go kubernetes.Watch(ctx, gitInformer, kubernetes.HandleInformer{
-		Add:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
-		Del:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
-		Update: func(oldObj, newObj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
-	})
+	go func() {
+		err := kubernetes.Watch(ctx, gitInformer, kubernetes.HandleInformer{
+			Add:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+			Del:    func(obj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+			Update: func(oldObj, newObj interface{}) { cfgManager.ConfigUpdated(kubeFactory) },
+		})
+		errHandler(err)
+	}()
 }

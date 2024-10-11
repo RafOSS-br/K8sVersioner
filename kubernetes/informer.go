@@ -13,8 +13,8 @@ type HandleInformer struct {
 	Update func(oldObj, newObj interface{})
 }
 
-func Watch(ctx context.Context, informer informers.GenericInformer, h HandleInformer) {
-	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+func Watch(ctx context.Context, informer informers.GenericInformer, h HandleInformer) error {
+	_, err := informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			select {
 			case <-ctx.Done():
@@ -40,6 +40,9 @@ func Watch(ctx context.Context, informer informers.GenericInformer, h HandleInfo
 			}
 		},
 	})
-
+	if err != nil {
+		return err
+	}
 	informer.Informer().Run(ctx.Done())
+	return nil
 }

@@ -47,6 +47,3 @@ func (k *Factory) GetClientset() *kubernetes.Clientset {
 func (k *Factory) GetDynamicClient() *dynamic.DynamicClient {
 	return k.dynamicClient
 }
-func GetClientConfig(cfg *rest.Config) (*kubernetes.Clientset, error) {
-	return kubernetes.NewForConfig(cfg)
-}
