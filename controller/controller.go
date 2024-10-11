@@ -363,7 +363,8 @@ func syncResource(ctx context.Context, cfg *config.Config, resFilter config.Reso
 
 // determineNamespaces determines the list of namespaces to process based on the configuration
 func determineNamespaces(ctx context.Context, namespace string, dynClient dynamic.Interface) ([]string, error) {
-	if namespace == "*" || namespace == "all" {
+	switch namespace {
+	case "*", "all":
 		nsList, err := dynClient.Resource(schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}).List(ctx, v1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list namespaces: %w", err)
@@ -373,11 +374,11 @@ func determineNamespaces(ctx context.Context, namespace string, dynClient dynami
 			namespaces = append(namespaces, ns.GetName())
 		}
 		return namespaces, nil
-	} else if namespace != "" {
-		return []string{namespace}, nil
-	} else {
+	case "":
 		// Cluster-wide resources (no namespace)
 		return []string{""}, nil
+	default:
+		return []string{namespace}, nil
 	}
 }
 
