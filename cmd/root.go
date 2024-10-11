@@ -1,9 +1,13 @@
+/*
+Package cmd implements the root command of the application.
+*/
 package cmd
 
 import (
-	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+
+	"github.com/RafOSS-br/K8sVersioner/config"
 )
 
 var (

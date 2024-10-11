@@ -6,8 +6,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/RafOSS-br/K8sVersioner/cmd"
 	"github.com/rs/zerolog"
+
+	"github.com/RafOSS-br/K8sVersioner/cmd"
 )
 
 func main() {

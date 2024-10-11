@@ -1,3 +1,6 @@
+/*
+Package controller provides the main controller logic for the K8sVersioner application.
+*/
 package controller
 
 import (
@@ -7,10 +10,11 @@ import (
 	"fmt"
 	"text/template"
 
+	"github.com/go-playground/validator/v10"
+
 	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/RafOSS-br/K8sVersioner/git"
 	"github.com/RafOSS-br/K8sVersioner/kubernetes"
-	"github.com/go-playground/validator/v10"
 
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
@@ -57,18 +61,14 @@ func StartController(ctx context.Context, args ControllerArgs) error {
 	}
 
 	// Collect resources to watch
-	resourcesToWatch, err := getResourcesToWatch(ctx, cfgManager, dynClient)
-	if err != nil {
-		log.Error().Err(err).Msg("Error collecting resources to watch")
-		return err
-	}
+	resourcesToWatch := getResourcesToWatch(ctx, cfgManager, dynClient)
 
 	// Set up informers for resources to watch and return
 	return setupInformers(ctx, dynClient, mapper, resourcesToWatch, cfgManager)
 }
 
 // getResourcesToWatch collects resources to watch based on the configurations
-func getResourcesToWatch(ctx context.Context, cfManager *config.ConfigManager, dynClient dynamic.Interface) (map[schema.GroupVersionKind]map[string]*ResourceWatchConfig, error) {
+func getResourcesToWatch(ctx context.Context, cfManager *config.ConfigManager, dynClient dynamic.Interface) map[schema.GroupVersionKind]map[string]*ResourceWatchConfig {
 	cfgMap := cfManager.GetConfigMap()
 
 	resourcesToWatch := make(map[schema.GroupVersionKind]map[string]*ResourceWatchConfig)
@@ -98,7 +98,7 @@ func getResourcesToWatch(ctx context.Context, cfManager *config.ConfigManager, d
 		}
 	}
 
-	return resourcesToWatch, nil
+	return resourcesToWatch
 }
 
 // ResourceWatchConfig holds the configuration and resource filter for a resource

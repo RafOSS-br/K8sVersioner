@@ -1,3 +1,6 @@
+/*
+Package git provides a client to interact with a git repository.
+*/
 package git
 
 import (
@@ -54,9 +57,9 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 	}
 	dir := cfg.Spec.RepositoryPath
 	if strings.HasSuffix(dir, "/") {
-		dir = dir + cfg.Spec.RepositoryFolder
+		dir += cfg.Spec.RepositoryFolder
 	} else {
-		dir = dir + "/" + cfg.Spec.RepositoryFolder
+		dir += "/" + cfg.Spec.RepositoryFolder
 	}
 
 	var repo *git.Repository

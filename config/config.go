@@ -1,3 +1,6 @@
+/*
+Package config provides the configuration types and functions for the K8sVersioner application.
+*/
 package config
 
 import (
@@ -5,7 +8,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,6 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
+
+	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 )
 
 const (

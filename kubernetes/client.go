@@ -1,3 +1,6 @@
+/*
+Package kubernetes provides a factory for creating kubernetes clients.
+*/
 package kubernetes
 
 import (

@@ -6,17 +6,18 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
+
 	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/RafOSS-br/K8sVersioner/controller"
 	"github.com/RafOSS-br/K8sVersioner/kubernetes"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
 )
 
 var kubeOperatorSubCmd = &cobra.Command{
 	Use:   "kube-operator",
 	Short: "KubeOperator is a command to manage K8sVersioner using CRDs",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, args []string) {
 		run(
 			&config.EnvironmentConfig{
 				OneShot:       oneShot,
@@ -42,10 +43,10 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 	cfg, err := config.LoadConfigStore(factory.GetDynamicClient())
 	if err != nil {
 		if config.HandleValidationErrors(ctx, err) {
-			os.Exit(1)
+			sigs <- syscall.SIGTERM
 		}
 		log.Fatal().Err(err).Msg("Error loading configuration")
-		os.Exit(1)
+		sigs <- syscall.SIGTERM
 	}
 
 	go func() {
@@ -55,7 +56,7 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 			EnvironmentConfig: envConf,
 		}); err != nil {
 			log.Error().Err(err).Msg("Error starting controller")
-			os.Exit(1)
+			sigs <- syscall.SIGTERM
 		}
 	}()
 
