@@ -17,7 +17,7 @@ import (
 var kubeOperatorSubCmd = &cobra.Command{
 	Use:   "kube-operator",
 	Short: "KubeOperator is a command to manage K8sVersioner using CRDs",
-	Run: func(_ *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		run(
 			&config.EnvironmentConfig{
 				OneShot:       oneShot,

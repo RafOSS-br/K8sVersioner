@@ -20,6 +20,7 @@ var rootCmd = &cobra.Command{
 	Long:  `K8sVersioner is a tool to manage Kubernetes resources versions`,
 }
 
+// Execute runs the root command
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal().Err(err).Msg("Error executing the command")

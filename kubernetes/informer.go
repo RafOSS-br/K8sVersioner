@@ -7,12 +7,14 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+// HandleInformer is a struct that contains the functions to handle the events of an informer
 type HandleInformer struct {
 	Add    func(obj interface{})
 	Del    func(obj interface{})
 	Update func(oldObj, newObj interface{})
 }
 
+// Watch starts watching the events of an informer
 func Watch(ctx context.Context, informer informers.GenericInformer, h HandleInformer) error {
 	_, err := informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {

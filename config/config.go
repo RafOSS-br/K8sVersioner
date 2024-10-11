@@ -20,12 +20,13 @@ import (
 )
 
 const (
-	ResourceGroup      = "example.com"
-	ResourceVersion    = "v1alpha1"
-	GITConfigsResource = "gitconfigs"
-	ConfigsResource    = "configs"
+	ResourceGroup      = "example.com" // Group of the resources
+	ResourceVersion    = "v1alpha1"    // Version of the resources
+	GITConfigsResource = "gitconfigs"  // Resource for GitConfig
+	ConfigsResource    = "configs"     // Resource for Config
 )
 
+// ConfigManager is a struct that manages the configuration of the application
 type ConfigManager struct {
 	mu        sync.RWMutex
 	cfg       []ConfigStore
@@ -33,22 +34,27 @@ type ConfigManager struct {
 	configMap map[string]*Config
 }
 
+// Lock locks the ConfigManager
 func (cm *ConfigManager) Lock() {
 	cm.mu.Lock()
 }
 
+// Unlock unlocks the ConfigManager
 func (cm *ConfigManager) Unlock() {
 	cm.mu.Unlock()
 }
 
+// RLock locks the ConfigManager for reading
 func (cm *ConfigManager) RLock() {
 	cm.mu.RLock()
 }
 
+// RUnlock unlocks the ConfigManager after reading
 func (cm *ConfigManager) RUnlock() {
 	cm.mu.RUnlock()
 }
 
+// GetGitMap returns a map of GitConfig resources
 func (cm *ConfigManager) GetGitMap() map[string]*GitConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -65,6 +71,7 @@ func (cm *ConfigManager) GetGitMap() map[string]*GitConfig {
 	return gitMap
 }
 
+// GetConfigMap returns a map of Config resources
 func (cm *ConfigManager) GetConfigMap() map[string]*Config {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -81,12 +88,14 @@ func (cm *ConfigManager) GetConfigMap() map[string]*Config {
 	return configMap
 }
 
+// NewConfigManager creates a new ConfigManager
 func NewConfigManager(cfg []ConfigStore) *ConfigManager {
 	return &ConfigManager{
 		cfg: cfg,
 	}
 }
 
+// Reload reloads the configuration
 func (cm *ConfigManager) Reload(dynamicClient *dynamic.DynamicClient) error {
 	cfg, err := LoadConfigStore(dynamicClient)
 	if err != nil {
@@ -102,6 +111,7 @@ func (cm *ConfigManager) Reload(dynamicClient *dynamic.DynamicClient) error {
 	return nil
 }
 
+// ConfigUpdated updates the configuration
 func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.Factory) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -113,6 +123,7 @@ func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.Factory) {
 	cm.cfg = cfg
 }
 
+// ConfigSpec is a struct that contains the specification of a Config resource
 type ConfigSpec struct {
 	Namespace       string            `json:"namespace" validate:"required"`                  // Namespace to watch
 	IncludeResource []ResourceFilter  `json:"includeResource,omitempty" validate:"dive"`      // Resources to include
@@ -124,12 +135,14 @@ type ConfigSpec struct {
 	FolderStructure string            `json:"folderStructure" validate:"required"`            // Folder structure
 }
 
+// Config is a struct that represents a Config resource
 type Config struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              ConfigSpec `json:"spec,omitempty"`
 }
 
+// ResourceFilter is a struct that contains the specification of a resource filter
 type ResourceFilter struct {
 	Name              string `json:"name" validate:"required"`       // Name of the resource
 	APIVersion        string `json:"apiVersion" validate:"required"` // API version of the resource
@@ -137,6 +150,7 @@ type ResourceFilter struct {
 	WithStatusField   bool   `json:"withStatusField,omitempty"`      // Include status field
 }
 
+// GitConfigSpec is a struct that contains the specification of a GitConfig resource
 type GitConfigSpec struct {
 	Protocol          string `json:"protocol" validate:"required,oneof=http https ssh"`               // Protocol
 	RepositoryURL     string `json:"repositoryUrl" validate:"required,url"`                           // Repository URL
@@ -149,19 +163,20 @@ type GitConfigSpec struct {
 	DryRun            bool   `json:"dryRun,omitempty"`                                                // Dry run mode
 }
 
+// EnvironmentConfig is a struct that contains the configuration of the environment
 type EnvironmentConfig struct {
 	OneShot       bool
 	ExecutionMode string `validate:"required,oneof=kube-controller standalone"`
 }
 
+// Validate validates the EnvironmentConfig
 func (ec *EnvironmentConfig) Validate() error {
 	validate := validator.New()
 	return validate.Struct(ec)
 }
 
 const (
-	DefaultRepositoryPath   = "/tmp"
-	DefaultRepositoryFolder = "repo"
+	DefaultRepositoryFolder = "repo" // Default folder for the repository
 )
 
 var (
@@ -204,7 +219,7 @@ func LoadConfigs(dynamicClient *dynamic.DynamicClient) ([]*Config, error) {
 		return nil, fmt.Errorf("failed to list Config resources: %w", err)
 	}
 
-	var configs []*Config
+	var configs = make([]*Config, 0, len(unstructuredConfigList.Items))
 	validator := validator.New()
 
 	// Iterate over the list of Config resources
@@ -278,7 +293,7 @@ func LoadConfigStore(dynamicClient *dynamic.DynamicClient) ([]ConfigStore, error
 		return nil, fmt.Errorf("failed to load GitConfigs: %w", err)
 	}
 
-	var pairs []ConfigStore
+	var pairs []ConfigStore = make([]ConfigStore, 0, len(configs))
 
 	// Associate each Config with its corresponding GitConfig
 	for _, cfg := range configs {

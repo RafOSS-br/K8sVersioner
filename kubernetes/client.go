@@ -10,11 +10,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// Factory is a struct that contains the kubernetes clientset and dynamic client
 type Factory struct {
 	clientset     *kubernetes.Clientset
 	dynamicClient *dynamic.DynamicClient
 }
 
+// NewFactory creates a new factory for kubernetes clients
 func NewFactory() (*Factory, error) {
 	var config *rest.Config
 	var err error
@@ -43,10 +45,12 @@ func NewFactory() (*Factory, error) {
 	}, nil
 }
 
+// GetClientset returns the kubernetes clientset
 func (k *Factory) GetClientset() *kubernetes.Clientset {
 	return k.clientset
 }
 
+// GetDynamicClient returns the dynamic client
 func (k *Factory) GetDynamicClient() *dynamic.DynamicClient {
 	return k.dynamicClient
 }
