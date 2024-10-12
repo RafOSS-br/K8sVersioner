@@ -56,24 +56,16 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.Get(ctx, req.NamespacedName, gitConfig); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("GitConfig resource not found. Ignoring since object must be deleted")
-			if err := r.StateUpdate(ctx, req, gitConfig); err != nil {
-				logger.Error(err, "unable to update GitConfig state")
-				return ctrl.Result{}, err
-			}
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "unable to fetch GitConfig")
-		if err := r.StateUpdate(ctx, req, gitConfig, err); err != nil {
-			logger.Error(err, "unable to update GitConfig state")
-			return ctrl.Result{}, err
-		}
 		return ctrl.Result{}, err
 	}
 
 	v := validator.New()
 
 	if err := v.Struct(gitConfig.Spec); err != nil {
-		logger.Error(err, "GitConfig validation failed")
+		logger.Info("GitConfig validation failed", "error", err)
 		if err := r.StateUpdate(ctx, req, gitConfig, err); err != nil {
 			logger.Error(err, "unable to update GitConfig state")
 			return ctrl.Result{}, err
@@ -83,11 +75,6 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// TODO: Add update logic here
 
-	// State update
-	if err := r.StateUpdate(ctx, req, gitConfig); err != nil {
-		logger.Error(err, "unable to update GitConfig state")
-		return ctrl.Result{}, err
-	}
 	return ctrl.Result{}, nil
 }
 

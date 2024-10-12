@@ -38,8 +38,7 @@ type GitConfigSpec struct {
 
 // GitConfigStatus defines the observed state of GitConfig
 type GitConfigStatus struct {
-	LastRun string `json:"lastRun,omitempty"` // Last run timestamp
-	Error   string `json:"error,omitempty"`   // Error message
+	Error string `json:"error,omitempty"` // Error message
 }
 
 //+kubebuilder:object:root=true

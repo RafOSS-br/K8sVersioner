@@ -32,7 +32,7 @@ type ConfigSpec struct {
 	OutputType      string            `json:"outputType" validate:"required,oneof=yaml json"`    // Output type
 	Annotations     map[string]string `json:"annotations,omitempty"`                             // Annotation filters
 	GitRef          string            `json:"gitRef" validate:"required"`                        // Reference to GitConfig
-	KubeConfig      string            `json:"kubeConfig" validate:"required,file"`               // KubeConfig path
+	KubeConfig      string            `json:"kubeConfig" validate:"file"`                        // KubeConfig path
 	FolderStructure string            `json:"folderStructure" validate:"required"`               // Folder structure
 }
 
@@ -45,8 +45,7 @@ type ResourceFilter struct {
 
 // ConfigStatus defines the observed state of Config
 type ConfigStatus struct {
-	LastRun string `json:"lastRun,omitempty"` // Last run timestamp
-	Error   string `json:"error,omitempty"`   // Error message
+	Error string `json:"error,omitempty"` // Error message
 }
 
 //+kubebuilder:object:root=true
