@@ -4,8 +4,11 @@ Package cmd implements the root command of the application.
 package cmd
 
 import (
+	"os"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"k8s.io/component-base/cli"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
 )
@@ -22,9 +25,8 @@ var rootCmd = &cobra.Command{
 
 // Execute runs the root command
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		log.Fatal().Err(err).Msg("Error executing the command")
-	}
+	exitCode := cli.Run(rootCmd)
+	os.Exit(exitCode)
 }
 
 func init() {
