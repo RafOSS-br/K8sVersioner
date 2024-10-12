@@ -95,22 +95,6 @@ func NewConfigManager(cfg []ConfigStore) *ConfigManager {
 	}
 }
 
-// Reload reloads the configuration
-func (cm *ConfigManager) Reload(dynamicClient *dynamic.DynamicClient) error {
-	cfg, err := LoadConfigStore(dynamicClient)
-	if err != nil {
-		return err
-	}
-
-	cm.mu.Lock()
-	cm.cfg = cfg
-	cm.gitMap = nil
-	cm.configMap = nil
-	cm.mu.Unlock()
-
-	return nil
-}
-
 // ConfigUpdated updates the configuration
 func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.KubeClientFactory) {
 	cm.mu.Lock()
