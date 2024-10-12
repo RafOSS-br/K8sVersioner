@@ -31,12 +31,11 @@ import (
 // ControllerArgs holds the arguments for the controller
 type ControllerArgs struct {
 	CfgManager        *config.ConfigManager     `validate:"required"`
-	Factory           *kubernetes.Factory       `validate:"required"`
 	EnvironmentConfig *config.EnvironmentConfig `validate:"required"`
 }
 
 // StartController starts the main controller logic
-func StartController(ctx context.Context, args ControllerArgs) error {
+func StartController(args ControllerArgs) error {
 	validate := validator.New()
 	if err := validate.Struct(args); err != nil {
 		return fmt.Errorf("invalid arguments: %w", err)
@@ -44,12 +43,12 @@ func StartController(ctx context.Context, args ControllerArgs) error {
 
 	var (
 		cfgManager = args.CfgManager
-		factory    = args.Factory
 		env        = args.EnvironmentConfig
+		ctx        = env.Context
 	)
 
-	client := factory.GetClientset()
-	dynClient := factory.GetDynamicClient()
+	client := env.GetClientset()
+	dynClient := env.GetDynamicClient()
 
 	cachedDiscovery := memory.NewMemCacheClient(client)
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscovery)

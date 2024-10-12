@@ -112,7 +112,7 @@ func (cm *ConfigManager) Reload(dynamicClient *dynamic.DynamicClient) error {
 }
 
 // ConfigUpdated updates the configuration
-func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.Factory) {
+func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.KubeClientFactory) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cfg, err := LoadConfigStore(kubeFactory.GetDynamicClient())
@@ -165,8 +165,11 @@ type GitConfigSpec struct {
 
 // EnvironmentConfig is a struct that contains the configuration of the environment
 type EnvironmentConfig struct {
-	OneShot       bool
-	ExecutionMode string `validate:"required,oneof=kube-controller standalone"`
+	OneShot                       bool
+	ExecutionMode                 string             `validate:"required,oneof=kube-controller standalone"`
+	*kubernetes.KubeClientFactory                    // Generated in the run function, do not set manually
+	Context                       context.Context    // Generated in the run function, do not set manually
+	Cancel                        context.CancelFunc // Generated in the run function, do not set manually
 }
 
 // Validate validates the EnvironmentConfig
@@ -316,7 +319,7 @@ func LoadConfigStore(dynamicClient *dynamic.DynamicClient) ([]ConfigStore, error
 }
 
 // WatchConfig watches for changes in the Config resource
-func WatchConfig(ctx context.Context, cfgManager *ConfigManager, kubeFactory *kubernetes.Factory) {
+func WatchConfig(ctx context.Context, cfgManager *ConfigManager, kubeFactory *kubernetes.KubeClientFactory) {
 	dynClient := kubeFactory.GetDynamicClient()
 
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynClient, 0)

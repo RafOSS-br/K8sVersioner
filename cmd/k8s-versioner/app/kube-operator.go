@@ -1,17 +1,11 @@
 package cmd
 
 import (
-	"context"
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/RafOSS-br/K8sVersioner/controller"
-	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 )
 
 var kubeOperatorSubCmd = &cobra.Command{
@@ -29,19 +23,11 @@ var kubeOperatorSubCmd = &cobra.Command{
 }
 
 func kubeOperator(envConf *config.EnvironmentConfig) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	factory, err := kubernetes.NewFactory()
-	if err != nil {
-		klog.ErrorS(err, "Failed to create Kubernetes factory")
-		return
-	}
-
-	cfg, err := config.LoadConfigStore(factory.GetDynamicClient())
+	var (
+		ctx    = envConf.Context
+		cancel = envConf.Cancel
+	)
+	cfg, err := config.LoadConfigStore(envConf.GetDynamicClient())
 	if err != nil {
 		if config.HandleValidationErrors(ctx, err) {
 			klog.ErrorS(err, "Validation errors in configuration")
@@ -52,9 +38,8 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 	}
 
 	go func() {
-		if err := controller.StartController(ctx, controller.ControllerArgs{
+		if err := controller.StartController(controller.ControllerArgs{
 			CfgManager:        config.NewConfigManager(cfg),
-			Factory:           factory,
 			EnvironmentConfig: envConf,
 		}); err != nil {
 			klog.ErrorS(err, "Error starting controller")
@@ -64,12 +49,5 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 	}()
 
 	// Watching for configuration changes
-	config.WatchConfig(ctx, config.NewConfigManager(cfg), factory)
-
-	select {
-	case <-ctx.Done():
-		klog.Info("Context cancelled, shutting down application")
-	case sig := <-sigs:
-		klog.Infof("Received signal: %s, shutting down application", sig.String())
-	}
+	config.WatchConfig(ctx, config.NewConfigManager(cfg), envConf.KubeClientFactory)
 }
