@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/klog/v2"
 
-	"github.com/RafOSS-br/K8sVersioner/kubernetes"
+	"github.com/RafOSS-br/K8sVersioner/internal/kubernetes"
 )
 
 const (

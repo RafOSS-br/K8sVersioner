@@ -4,8 +4,8 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
 
-	"github.com/RafOSS-br/K8sVersioner/config"
-	"github.com/RafOSS-br/K8sVersioner/controller"
+	"github.com/RafOSS-br/K8sVersioner/internal/config"
+	"github.com/RafOSS-br/K8sVersioner/internal/controller"
 )
 
 var kubeOperatorSubCmd = &cobra.Command{

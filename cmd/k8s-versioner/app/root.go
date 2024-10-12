@@ -14,8 +14,8 @@ import (
 	"k8s.io/component-base/cli"
 	"k8s.io/klog/v2"
 
-	"github.com/RafOSS-br/K8sVersioner/config"
-	"github.com/RafOSS-br/K8sVersioner/kubernetes"
+	"github.com/RafOSS-br/K8sVersioner/internal/config"
+	"github.com/RafOSS-br/K8sVersioner/internal/kubernetes"
 )
 
 var (

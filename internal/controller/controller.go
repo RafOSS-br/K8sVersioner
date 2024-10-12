@@ -12,9 +12,9 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/RafOSS-br/K8sVersioner/config"
-	"github.com/RafOSS-br/K8sVersioner/git"
-	"github.com/RafOSS-br/K8sVersioner/kubernetes"
+	"github.com/RafOSS-br/K8sVersioner/internal/config"
+	"github.com/RafOSS-br/K8sVersioner/internal/git"
+	"github.com/RafOSS-br/K8sVersioner/internal/kubernetes"
 
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/meta"

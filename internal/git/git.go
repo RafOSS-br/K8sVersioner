@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/RafOSS-br/K8sVersioner/config"
+	"github.com/RafOSS-br/K8sVersioner/internal/config"
 
 	"github.com/go-git/go-git/v5"
 	gitConfig "github.com/go-git/go-git/v5/config"
