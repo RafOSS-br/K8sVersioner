@@ -50,6 +50,7 @@ type ConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=configs
 
 // Config is the Schema for the configs API
 type Config struct {

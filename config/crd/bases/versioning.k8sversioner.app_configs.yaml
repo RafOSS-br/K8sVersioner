@@ -11,8 +11,10 @@ spec:
     kind: Config
     listKind: ConfigList
     plural: configs
+    shortNames:
+    - configs
     singular: config
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:

@@ -43,6 +43,7 @@ type GitConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=gitconfigs
 
 // GitConfig is the Schema for the gitconfigs API
 type GitConfig struct {
