@@ -13,7 +13,7 @@
             "program": "${workspaceFolder}/main.go",
             "args": [
                 "kube-operator",
-                "--one-shot"
+                // "--one-shot"
             ]
         }
     ]
