@@ -16,7 +16,6 @@ import (
 	"github.com/RafOSS-br/K8sVersioner/git"
 	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 
-	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +25,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/klog/v2"
 )
 
 // ControllerArgs holds the arguments for the controller
@@ -54,10 +54,10 @@ func StartController(ctx context.Context, args ControllerArgs) error {
 	cachedDiscovery := memory.NewMemCacheClient(client)
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscovery)
 
-	log.Info().Msg("Git client created successfully")
+	klog.Info("Git client created successfully")
 	if env.OneShot {
 		if err := syncResources(ctx, cfgManager, dynClient, mapper); err != nil {
-			log.Error().Err(err).Msg("Error synchronizing resources")
+			klog.ErrorS(err, "Error synchronizing resources")
 		}
 		return nil
 	}
@@ -86,7 +86,7 @@ func getResourcesToWatch(ctx context.Context, cfManager *config.ConfigManager, d
 
 			namespaces, err := determineNamespaces(ctx, cfgStore.Namespace, dynClient)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to determine namespaces")
+				klog.ErrorS(err, "Failed to determine namespaces")
 				continue
 			}
 
@@ -114,7 +114,7 @@ func setupInformers(ctx context.Context, dynClient dynamic.Interface, mapper *re
 	for gvk, nsConfigMap := range resourcesToWatch {
 		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if err != nil {
-			log.Error().Err(err).Str("gvk", gvk.String()).Msg("Error getting REST mapping")
+			klog.ErrorS(err, "Error getting REST mapping", "gvk", gvk.String())
 			continue
 		}
 
@@ -127,48 +127,48 @@ func setupInformers(ctx context.Context, dynClient dynamic.Interface, mapper *re
 				Add: func(obj interface{}) {
 					u, ok := obj.(*unstructured.Unstructured)
 					if !ok {
-						log.Error().Msg("Failed to cast object to Unstructured in Add handler")
+						klog.Error("Failed to cast object to Unstructured in Add handler")
 						return
 					}
 
 					// Get the git client for this configuration
 					gitClient, err := getGitClientForConfig(cfgManager, watchConfig.Config)
 					if err != nil {
-						log.Error().Err(err).Msg("Error getting Git client in Add handler")
+						klog.ErrorS(err, "Error getting Git client in Add handler")
 						return
 					}
 
 					if err := syncResource(ctx, watchConfig.Config, watchConfig.ResFilter, gitClient, u, mapping); err != nil {
-						log.Error().Err(err).Msg("Error synchronizing resource in Add handler")
+						klog.ErrorS(err, "Error synchronizing resource in Add handler")
 					}
 				},
 				Update: func(oldObj, newObj interface{}) {
 					u, ok := newObj.(*unstructured.Unstructured)
 					if !ok {
-						log.Error().Msg("Failed to cast object to Unstructured in Update handler")
+						klog.Error("Failed to cast object to Unstructured in Update handler")
 						return
 					}
 
 					// Get the git client for this configuration
 					gitClient, err := getGitClientForConfig(cfgManager, watchConfig.Config)
 					if err != nil {
-						log.Error().Err(err).Msg("Error getting Git client in Update handler")
+						klog.ErrorS(err, "Error getting Git client in Update handler")
 						return
 					}
 
 					if err := syncResource(ctx, watchConfig.Config, watchConfig.ResFilter, gitClient, u, mapping); err != nil {
-						log.Error().Err(err).Msg("Error synchronizing resource in Update handler")
+						klog.ErrorS(err, "Error synchronizing resource in Update handler")
 					}
 				},
 				Del: func(obj interface{}) {
 					u, ok := obj.(*unstructured.Unstructured)
 					if !ok {
-						log.Error().Msg("Failed to cast object to Unstructured in Delete handler")
+						klog.Error("Failed to cast object to Unstructured in Delete handler")
 						return
 					}
 
 					// Handle resource deletion if necessary
-					log.Info().Str("name", u.GetName()).Str("namespace", u.GetNamespace()).Msg("Resource deleted")
+					klog.InfoS("Resource deleted", "name", u.GetName(), "namespace", u.GetNamespace())
 				},
 			}
 
@@ -199,7 +199,7 @@ func getGitClientForConfig(cfgManager *config.ConfigManager, cfgStore *config.Co
 
 // syncResources synchronizes resources based on the provided configurations
 func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper) error {
-	log.Info().Msg("Starting resource synchronization")
+	klog.Info("Starting resource synchronization")
 
 	cfgMap := cfManager.GetConfigMap()
 	gitMap := cfManager.GetGitMap()
@@ -208,23 +208,23 @@ func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClie
 		gitConfigKey := cfgStore.Spec.GitRef + config.MapKeySeparator + cfgStore.Namespace
 		gitConfig, ok := gitMap[gitConfigKey]
 		if !ok {
-			log.Error().Str("config", cfgStore.Name).Str("namespace", cfgStore.Namespace).Msg("Git configuration not found")
+			klog.ErrorS(nil, "Git configuration not found", "config", cfgStore.Name, "namespace", cfgStore.Namespace)
 			continue
 		}
 		gitClient, err := git.NewGitClient(ctx, gitConfig)
 		if err != nil {
-			log.Error().Err(err).Msg("Error creating Git client")
+			klog.ErrorS(err, "Error creating Git client")
 			continue
 		}
 		for _, resFilter := range cfgStore.Spec.IncludeResource {
 			if err := sync(ctx, cfgStore, resFilter, dynClient, mapper, gitClient); err != nil {
-				log.Error().Err(err).Msg("Error synchronizing resources")
+				klog.ErrorS(err, "Error synchronizing resources")
 				continue
 			}
 		}
 	}
 
-	log.Info().Msg("Resource synchronization completed successfully")
+	klog.Info("Resource synchronization completed successfully")
 	return nil
 }
 
@@ -233,7 +233,7 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 	// Determine namespaces to process
 	namespaces, err := determineNamespaces(ctx, cfg.Namespace, dynClient)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to determine namespaces")
+		klog.ErrorS(err, "Failed to determine namespaces")
 		return err
 	}
 
@@ -242,10 +242,7 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 
 	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		log.Error().
-			Err(err).
-			Str("kind", gvk.Kind).
-			Msg("Error getting REST mapping")
+		klog.ErrorS(err, "Error getting REST mapping", "kind", gvk.Kind)
 		return err
 	}
 
@@ -254,11 +251,7 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 
 		list, err := resourceClient.List(ctx, v1.ListOptions{})
 		if err != nil {
-			log.Error().
-				Err(err).
-				Str("resource", mapping.Resource.Resource).
-				Str("namespace", namespace).
-				Msg("Error listing resources")
+			klog.ErrorS(err, "Error listing resources", "resource", mapping.Resource.Resource, "namespace", namespace)
 			continue
 		}
 
@@ -269,11 +262,7 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 			}
 
 			if err := syncResource(ctx, cfg, resFilter, gitClient, &item, mapping); err != nil {
-				log.Error().
-					Err(err).
-					Str("resource", mapping.Resource.Resource).
-					Str("name", item.GetName()).
-					Msg("Error synchronizing resource")
+				klog.ErrorS(err, "Error synchronizing resource", "resource", mapping.Resource.Resource, "name", item.GetName())
 				continue
 			}
 		}
@@ -283,12 +272,10 @@ func sync(ctx context.Context, cfg *config.Config, resFilter config.ResourceFilt
 	message := fmt.Sprintf("Resources synchronized for %s/%s", cfg.Namespace, cfg.Name)
 	if err := gitClient.CommitAndPush(ctx, message); err != nil {
 		if err == git.ErrAlreadyUpToDate {
-			log.Warn().Err(err).Msg("No changes to commit")
+			klog.Warning("No changes to commit")
 			return nil
 		}
-		log.Error().
-			Err(err).
-			Msg("Error committing and pushing to Git")
+		klog.ErrorS(err, "Error committing and pushing to Git")
 		return err
 	}
 	return nil
@@ -313,21 +300,13 @@ func syncResource(ctx context.Context, cfg *config.Config, resFilter config.Reso
 	if cfg.Spec.OutputType == "yaml" {
 		data, err = yaml.Marshal(item.Object)
 		if err != nil {
-			log.Error().
-				Err(err).
-				Str("resource", mapping.Resource.Resource).
-				Str("name", item.GetName()).
-				Msg("Error serializing the resource to YAML")
+			klog.ErrorS(err, "Error serializing the resource to YAML", "resource", mapping.Resource.Resource, "name", item.GetName())
 			return err
 		}
 	} else {
 		data, err = json.MarshalIndent(item.Object, "", "  ")
 		if err != nil {
-			log.Error().
-				Err(err).
-				Str("resource", mapping.Resource.Resource).
-				Str("name", item.GetName()).
-				Msg("Error serializing the resource to JSON")
+			klog.ErrorS(err, "Error serializing the resource to JSON", "resource", mapping.Resource.Resource, "name", item.GetName())
 			return err
 		}
 	}
@@ -337,28 +316,19 @@ func syncResource(ctx context.Context, cfg *config.Config, resFilter config.Reso
 
 	// Save the resource to Git
 	if err := gitClient.SaveResource(ctx, path, data); err != nil {
-		log.Error().
-			Err(err).
-			Str("path", path).
-			Msg("Error saving the resource to Git")
+		klog.ErrorS(err, "Error saving the resource to Git", "path", path)
 		return err
 	}
 
-	log.Info().
-		Str("resource", mapping.Resource.Resource).
-		Str("name", item.GetName()).
-		Str("namespace", item.GetNamespace()).
-		Str("path", path).
-		Msg("Resource saved to Git")
+	klog.InfoS("Resource saved to Git", "resource", mapping.Resource.Resource, "name", item.GetName(), "namespace", item.GetNamespace(), "path", path)
 
-	message := fmt.Sprintf("Resource %s/%s synchronized for %s/%s", item.GetNamespace(), item.GetName(),
-		cfg.Namespace, cfg.Name)
+	message := fmt.Sprintf("Resource %s/%s synchronized for %s/%s", item.GetNamespace(), item.GetName(), cfg.Namespace, cfg.Name)
 
 	if err := gitClient.CommitAndPush(ctx, message); err != nil {
 		if err == git.ErrAlreadyUpToDate {
-			log.Warn().Err(err).Msg("No changes to commit")
+			klog.Warning("No changes to commit")
 		} else {
-			log.Error().Err(err).Msg("Error committing and pushing to Git")
+			klog.ErrorS(err, "Error committing and pushing to Git")
 		}
 		return err
 	}
@@ -419,7 +389,7 @@ func generateFilePath(structure string, item *unstructured.Unstructured) string 
 	// Parse the provided template structure
 	templ, err := template.New("path").Parse(structure)
 	if err != nil {
-		log.Error().Err(err).Msg("Error parsing folder structure template")
+		klog.ErrorS(err, "Error parsing folder structure template")
 		return ""
 	}
 
@@ -437,7 +407,7 @@ func generateFilePath(structure string, item *unstructured.Unstructured) string 
 	// Execute the template and capture the output
 	var b bytes.Buffer
 	if err := templ.Execute(&b, data); err != nil {
-		log.Error().Err(err).Msg("Error executing folder structure template")
+		klog.ErrorS(err, "Error executing folder structure template")
 		return ""
 	}
 

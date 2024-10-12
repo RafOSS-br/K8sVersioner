@@ -9,12 +9,12 @@ import (
 	"sync"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/klog/v2"
 
 	"github.com/RafOSS-br/K8sVersioner/kubernetes"
 )
@@ -117,7 +117,7 @@ func (cm *ConfigManager) ConfigUpdated(kubeFactory *kubernetes.Factory) {
 	defer cm.mu.Unlock()
 	cfg, err := LoadConfigStore(kubeFactory.GetDynamicClient())
 	if err != nil {
-		log.Error().Err(err).Msg("Error reloading configuration")
+		klog.ErrorS(err, "Error reloading configuration")
 		return
 	}
 	cm.cfg = cfg
@@ -206,7 +206,7 @@ type GitConfig struct {
 func HandleValidationErrors(ctx context.Context, err error) bool {
 	if validatorErr, ok := err.(validator.ValidationErrors); ok {
 		for _, e := range validatorErr {
-			log.Error().Str("field", e.Field()).Str("value", e.Value().(string)).Str("tag", e.Tag()).Str("options", e.Param()).Msg("Validation error")
+			klog.ErrorS(err, "Validation error", "field", e.Field(), "value", e.Value().(string), "tag", e.Tag(), "options", e.Param())
 		}
 		return true
 	}
@@ -324,7 +324,7 @@ func WatchConfig(ctx context.Context, cfgManager *ConfigManager, kubeFactory *ku
 	cfgInformer := factory.ForResource(ConfigGVR)
 	errHandler := func(cause error) {
 		if cause != nil {
-			log.Fatal().Err(cause).Msg("Error watching Config resource")
+			klog.Fatal(cause, "Error watching Config resource")
 		}
 	}
 

@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"k8s.io/klog/v2"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
 	"github.com/RafOSS-br/K8sVersioner/controller"
@@ -37,17 +37,17 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 
 	factory, err := kubernetes.NewFactory()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create Kubernetes factory")
+		klog.ErrorS(err, "Failed to create Kubernetes factory")
 		return
 	}
 
 	cfg, err := config.LoadConfigStore(factory.GetDynamicClient())
 	if err != nil {
 		if config.HandleValidationErrors(ctx, err) {
-			log.Error().Err(err).Msg("Validation errors in configuration")
+			klog.ErrorS(err, "Validation errors in configuration")
 			return
 		}
-		log.Error().Err(err).Msg("Error loading configuration")
+		klog.ErrorS(err, "Error loading configuration")
 		return
 	}
 
@@ -57,7 +57,7 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 			Factory:           factory,
 			EnvironmentConfig: envConf,
 		}); err != nil {
-			log.Error().Err(err).Msg("Error starting controller")
+			klog.ErrorS(err, "Error starting controller")
 			// Do not terminate the system here, just log and let the signal channel handle it
 			cancel()
 		}
@@ -68,8 +68,8 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 
 	select {
 	case <-ctx.Done():
-		log.Info().Msg("Context cancelled, shutting down application")
+		klog.Info("Context cancelled, shutting down application")
 	case sig := <-sigs:
-		log.Info().Msgf("Received signal: %s, shutting down application", sig.String())
+		klog.Infof("Received signal: %s, shutting down application", sig.String())
 	}
 }

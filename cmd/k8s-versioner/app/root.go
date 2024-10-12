@@ -6,9 +6,9 @@ package cmd
 import (
 	"os"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"k8s.io/component-base/cli"
+	"k8s.io/klog/v2"
 
 	"github.com/RafOSS-br/K8sVersioner/config"
 )
@@ -37,10 +37,10 @@ func init() {
 
 func run(envConf *config.EnvironmentConfig, f func(*config.EnvironmentConfig)) {
 	if envConf == nil {
-		log.Fatal().Msg("Invalid environment configuration")
+		klog.Fatal("Invalid environment configuration")
 	}
 	if err := envConf.Validate(); err != nil {
-		log.Fatal().Err(err).Msg("Invalid environment configuration")
+		klog.Fatal("Invalid environment configuration")
 	}
 
 	f(envConf)
