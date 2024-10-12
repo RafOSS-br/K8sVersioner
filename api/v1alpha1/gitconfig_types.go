@@ -38,8 +38,8 @@ type GitConfigSpec struct {
 
 // GitConfigStatus defines the observed state of GitConfig
 type GitConfigStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	LastRun string `json:"lastRun,omitempty"` // Last run timestamp
+	Error   string `json:"error,omitempty"`   // Error message
 }
 
 //+kubebuilder:object:root=true

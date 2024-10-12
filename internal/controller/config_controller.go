@@ -57,16 +57,36 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		if errors.IsNotFound(err) {
 			logger.Info("Config resource not found. Ignoring since object must be deleted")
+			if err := r.StateUpdate(ctx, req, config); err != nil {
+				logger.Error(err, "unable to update Config state")
+				return ctrl.Result{}, err
+			}
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "unable to fetch Config")
+		if err := r.StateUpdate(ctx, req, config, err); err != nil {
+			logger.Error(err, "unable to update Config state")
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, err
 	}
 
 	v := validator.New()
 	if err := v.Struct(config.Spec); err != nil {
 		logger.Error(err, "validation failed")
+		if err := r.StateUpdate(ctx, req, config, err); err != nil {
+			logger.Error(err, "unable to update Config state")
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
+	}
+
+	// TODO: Add update logic here
+
+	// State update
+	if err := r.StateUpdate(ctx, req, config); err != nil {
+		logger.Error(err, "unable to update Config state")
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil

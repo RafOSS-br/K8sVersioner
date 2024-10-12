@@ -85,6 +85,11 @@ spec:
             type: object
           status:
             description: ConfigStatus defines the observed state of Config
+            properties:
+              error:
+                type: string
+              lastRun:
+                type: string
             type: object
         type: object
     served: true
