@@ -28,12 +28,14 @@ import (
 	"k8s.io/client-go/restmapper"
 )
 
+// ControllerArgs holds the arguments for the controller
 type ControllerArgs struct {
 	CfgManager        *config.ConfigManager     `validate:"required"`
 	Factory           *kubernetes.Factory       `validate:"required"`
 	EnvironmentConfig *config.EnvironmentConfig `validate:"required"`
 }
 
+// StartController starts the main controller logic
 func StartController(ctx context.Context, args ControllerArgs) error {
 	validate := validator.New()
 	if err := validate.Struct(args); err != nil {
@@ -107,6 +109,7 @@ type ResourceWatchConfig struct {
 	ResFilter config.ResourceFilter
 }
 
+// setupInformers sets up informers for the resources to watch
 func setupInformers(ctx context.Context, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper, resourcesToWatch map[schema.GroupVersionKind]map[string]*ResourceWatchConfig, cfgManager *config.ConfigManager) error {
 	for gvk, nsConfigMap := range resourcesToWatch {
 		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
@@ -194,6 +197,7 @@ func getGitClientForConfig(cfgManager *config.ConfigManager, cfgStore *config.Co
 	return gitClient, nil
 }
 
+// syncResources synchronizes resources based on the provided configurations
 func syncResources(ctx context.Context, cfManager *config.ConfigManager, dynClient dynamic.Interface, mapper *restmapper.DeferredDiscoveryRESTMapper) error {
 	log.Info().Msg("Starting resource synchronization")
 

@@ -20,6 +20,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
+// GitClient is a struct that contains the git repository and the branch to work with
 type GitClient struct {
 	repo   *git.Repository
 	auth   transport.AuthMethod
@@ -35,6 +36,7 @@ func newHttpAuth(cfg *config.GitConfig) transport.AuthMethod {
 	}
 }
 
+// NewGitClient creates a new git client
 func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error) {
 	var auth transport.AuthMethod
 	var url string
@@ -94,8 +96,9 @@ func NewGitClient(ctx context.Context, cfg *config.GitConfig) (*GitClient, error
 	}, nil
 }
 
-var ErrAlreadyUpToDate = errors.New("already up to date")
+var ErrAlreadyUpToDate = errors.New("already up to date") // ErrAlreadyUpToDate is returned when there are no changes to commit
 
+// CommitAndPush commits and pushes the changes to the git repository
 func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
 	w, err := g.repo.Worktree()
 	if err != nil {
@@ -141,6 +144,7 @@ func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
 	return nil
 }
 
+// SaveResource saves a resource in the git repository
 func (g *GitClient) SaveResource(ctx context.Context, path string, data []byte) error {
 	fullPath := filepath.Join(g.dir, path)
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {

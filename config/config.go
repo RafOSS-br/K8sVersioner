@@ -180,12 +180,14 @@ const (
 )
 
 var (
+	// GVRs for Config and GitConfig resources
 	GitConfigGVR = schema.GroupVersionResource{
 		Group:    ResourceGroup,
 		Version:  ResourceVersion,
 		Resource: GITConfigsResource,
 	}
 
+	// GVR for Config resources
 	ConfigGVR = schema.GroupVersionResource{
 		Group:    ResourceGroup,
 		Version:  ResourceVersion,
@@ -193,12 +195,14 @@ var (
 	}
 )
 
+// GitConfig is a struct that represents a GitConfig resource
 type GitConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              GitConfigSpec `json:"spec,omitempty"`
 }
 
+// HandleValidationErrors logs validation errors
 func HandleValidationErrors(ctx context.Context, err error) bool {
 	if validatorErr, ok := err.(validator.ValidationErrors); ok {
 		for _, e := range validatorErr {
@@ -241,7 +245,7 @@ func LoadConfigs(dynamicClient *dynamic.DynamicClient) ([]*Config, error) {
 	return configs, nil
 }
 
-const MapKeySeparator = "/"
+const MapKeySeparator = "/" // Separator for map keys
 
 // LoadGitConfigs retrieves all GitConfig resources across all namespaces
 func LoadGitConfigs(dynamicClient *dynamic.DynamicClient) (map[string]*GitConfig, error) {
@@ -276,6 +280,7 @@ func LoadGitConfigs(dynamicClient *dynamic.DynamicClient) (map[string]*GitConfig
 	return gitConfigs, nil
 }
 
+// ConfigStore is a struct that associates Config resources with their corresponding GitConfig resources
 type ConfigStore struct {
 	Config    *Config
 	GitConfig *GitConfig
