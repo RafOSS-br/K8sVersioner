@@ -25,11 +25,15 @@ import (
 
 // GitConfigSpec defines the desired state of GitConfig
 type GitConfigSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of GitConfig. Edit gitconfig_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Protocol          string `json:"protocol" validate:"required,oneof=http https ssh"`               // Protocol
+	RepositoryURL     string `json:"repositoryUrl" validate:"required,url"`                           // Repository URL
+	Branch            string `json:"branch" validate:"required"`                                      // Branch
+	Username          string `json:"username,omitempty" validate:"required"`                          // Username (optional)
+	Password          string `json:"password,omitempty" validate:"required"`                          // Password (optional)
+	SSHPrivateKeyPath string `json:"sshPrivateKeyPath,omitempty" validate:"required_if=Protocol ssh"` // SSH Private Key Path
+	RepositoryPath    string `json:"repositoryPath" validate:"required"`                              // Repository Path
+	RepositoryFolder  string `json:"repositoryFolder" validate:"required"`                            // Repository Folder
+	DryRun            bool   `json:"dryRun,omitempty"`
 }
 
 // GitConfigStatus defines the observed state of GitConfig

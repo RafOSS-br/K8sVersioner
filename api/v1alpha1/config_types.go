@@ -25,11 +25,21 @@ import (
 
 // ConfigSpec defines the desired state of Config
 type ConfigSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Namespace       string            `json:"namespace" validate:"required"`                  // Namespace to watch
+	IncludeResource []ResourceFilter  `json:"includeResource,omitempty" validate:"dive"`      // Resources to include
+	Labels          map[string]string `json:"labels,omitempty"`                               // Label filters
+	OutputType      string            `json:"outputType" validate:"required,oneof=yaml json"` // Output type
+	Annotations     map[string]string `json:"annotations,omitempty"`                          // Annotation filters
+	GitRef          string            `json:"gitRef" validate:"required"`                     // Reference to GitConfig
+	KubeConfig      string            `json:"kubeConfig" validate:"required,file"`            // KubeConfig path
+	FolderStructure string            `json:"folderStructure" validate:"required"`            // Folder structure
+}
 
-	// Foo is an example field of Config. Edit config_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+type ResourceFilter struct {
+	Name              string `json:"name" validate:"required"`       // Name of the resource
+	APIVersion        string `json:"apiVersion" validate:"required"` // API version of the resource
+	WithManagedFields bool   `json:"withManagedFields,omitempty"`    // Include managed fields
+	WithStatusField   bool   `json:"withStatusField,omitempty"`      // Include status field
 }
 
 // ConfigStatus defines the observed state of Config
