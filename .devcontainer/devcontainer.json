@@ -7,5 +7,22 @@
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
 		"ghcr.io/devcontainers/features/git:1": {},
 		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {}
-	}
+	},
+	"mounts": [
+		"source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind"
+	],
+	"runArgs": [
+        "--network=host"
+    ],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-azuretools.vscode-docker",
+				"ms-kubernetes-tools.vscode-kubernetes-tools"
+			]
+		}
+	},
+	"remoteEnv": {
+        "KUBECONFIG": "/home/vscode/.kube/config"
+    }
 }
