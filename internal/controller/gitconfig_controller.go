@@ -19,12 +19,14 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
+	"github.com/go-playground/validator/v10"
 )
 
 // GitConfigReconciler reconciles a GitConfig object
@@ -47,9 +49,25 @@ type GitConfigReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.3/pkg/reconcile
 func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	gitConfig := &k8sversionerv1alpha1.GitConfig{}
+
+	if err := r.Get(ctx, req.NamespacedName, gitConfig); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("GitConfig resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "unable to fetch GitConfig")
+		return ctrl.Result{}, err
+	}
+
+	v := validator.New()
+
+	if err := v.Struct(gitConfig.Spec); err != nil {
+		logger.Error(err, "GitConfig validation failed")
+		return ctrl.Result{}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
