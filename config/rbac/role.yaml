@@ -1,11 +1,58 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  labels:
-    app.kubernetes.io/name: controller-git-k8s
-    app.kubernetes.io/managed-by: kustomize
   name: manager-role
 rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - k8s-versioner.k8sversioner.app
+  resources:
+  - configs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k8s-versioner.k8sversioner.app
+  resources:
+  - configs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - k8s-versioner.k8sversioner.app
+  resources:
+  - configs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - k8s-versioner.k8sversioner.app
+  resources:
+  - gitconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - k8s-versioner.k8sversioner.app
+  resources:
+  - gitconfigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - k8s-versioner.k8sversioner.app
+  resources:
+  - gitconfigs/status
+  verbs:
+  - get
+  - patch
+  - update
