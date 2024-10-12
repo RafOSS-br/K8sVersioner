@@ -37,16 +37,18 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 
 	factory, err := kubernetes.NewFactory()
 	if err != nil {
-		panic(err)
+		log.Error().Err(err).Msg("Failed to create Kubernetes factory")
+		return
 	}
 
 	cfg, err := config.LoadConfigStore(factory.GetDynamicClient())
 	if err != nil {
 		if config.HandleValidationErrors(ctx, err) {
-			sigs <- syscall.SIGTERM
+			log.Error().Err(err).Msg("Validation errors in configuration")
+			return
 		}
-		log.Fatal().Err(err).Msg("Error loading configuration")
-		sigs <- syscall.SIGTERM
+		log.Error().Err(err).Msg("Error loading configuration")
+		return
 	}
 
 	go func() {
@@ -56,14 +58,18 @@ func kubeOperator(envConf *config.EnvironmentConfig) {
 			EnvironmentConfig: envConf,
 		}); err != nil {
 			log.Error().Err(err).Msg("Error starting controller")
-			sigs <- syscall.SIGTERM
+			// Do not terminate the system here, just log and let the signal channel handle it
+			cancel()
 		}
 	}()
 
 	// Watching for configuration changes
 	config.WatchConfig(ctx, config.NewConfigManager(cfg), factory)
 
-	// Waiting for signal to terminate
-	<-sigs
-	log.Info().Msg("Shutting down application")
+	select {
+	case <-ctx.Done():
+		log.Info().Msg("Context cancelled, shutting down application")
+	case sig := <-sigs:
+		log.Info().Msgf("Received signal: %s, shutting down application", sig.String())
+	}
 }
