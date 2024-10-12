@@ -20,5 +20,7 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- gitconfig_editor_role.yaml
+- gitconfig_viewer_role.yaml
 - config_editor_role.yaml
 - config_viewer_role.yaml

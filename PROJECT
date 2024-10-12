@@ -20,4 +20,13 @@ resources:
   kind: Config
   path: github.com/RafOSS-br/K8sVersionerls/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8sversioner.app
+  group: k8s-versioner
+  kind: GitConfig
+  path: github.com/RafOSS-br/K8sVersionerls/api/v1alpha1
+  version: v1alpha1
 version: "3"
