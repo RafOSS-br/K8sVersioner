@@ -1,5 +1,5 @@
 ## Append samples of your project ##
 resources:
-- k8s-versioner_v1alpha1_config.yaml
-- k8s-versioner_v1alpha1_gitconfig.yaml
+- versioning_v1alpha1_config.yaml
+- versioning_v1alpha1_gitconfig.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

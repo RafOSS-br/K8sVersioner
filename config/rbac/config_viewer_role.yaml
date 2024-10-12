@@ -8,7 +8,7 @@ metadata:
   name: config-viewer-role
 rules:
 - apiGroups:
-  - k8s-versioner.k8sversioner.app
+  - versioning.k8sversioner.app
   resources:
   - configs
   verbs:
@@ -16,7 +16,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - k8s-versioner.k8sversioner.app
+  - versioning.k8sversioner.app
   resources:
   - configs/status
   verbs:

@@ -35,9 +35,9 @@ type ConfigReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=k8s-versioner.k8sversioner.app,resources=configs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=k8s-versioner.k8sversioner.app,resources=configs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=k8s-versioner.k8sversioner.app,resources=configs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -82,6 +82,7 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// TODO: Add update logic here
+	logger.Info("Reconciling Config", "name", config.Name)
 
 	// State update
 	if err := r.StateUpdate(ctx, req, config); err != nil {

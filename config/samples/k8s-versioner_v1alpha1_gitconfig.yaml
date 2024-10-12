@@ -1,4 +1,4 @@
-apiVersion: k8s-versioner.k8sversioner.app/v1alpha1
+apiVersion: versioning.k8sversioner.app/v1alpha1
 kind: GitConfig
 metadata:
   labels:

@@ -35,9 +35,9 @@ type GitConfigReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=k8s-versioner.k8sversioner.app,resources=gitconfigs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=k8s-versioner.k8sversioner.app,resources=gitconfigs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=k8s-versioner.k8sversioner.app,resources=gitconfigs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=gitconfigs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=gitconfigs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=gitconfigs/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
