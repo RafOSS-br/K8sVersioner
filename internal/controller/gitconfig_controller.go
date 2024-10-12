@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
+	"github.com/RafOSS-br/K8sVersionerls/internal/store"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -50,7 +51,7 @@ type GitConfigReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.3/pkg/reconcile
 func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-
+	logger.Info("Reconciling GitConfig")
 	gitConfig := &k8sversionerv1alpha1.GitConfig{}
 
 	if err := r.Get(ctx, req.NamespacedName, gitConfig); err != nil {
@@ -73,7 +74,13 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	// TODO: Add update logic here
+	err := store.StoreSingleton.CreateOrUpdateGitConfig(gitConfig)
+	if err != nil {
+		logger.Error(err, "unable to create or update GitConfig")
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Loaded GitConfig", "name", gitConfig.Name)
 
 	return ctrl.Result{}, nil
 }

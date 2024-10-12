@@ -23,9 +23,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
+	"github.com/RafOSS-br/K8sVersionerls/internal/store"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -50,7 +52,7 @@ type ConfigReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.3/pkg/reconcile
 func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-
+	logger.Info("Reconciling Config")
 	config := &k8sversionerv1alpha1.Config{}
 
 	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
@@ -76,8 +78,13 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	// TODO: Add update logic here
-	logger.Info("Reconciling Config", "name", config.Name)
+	err := store.StoreSingleton.CreateOrUpdateConfig(config)
+	if err != nil {
+		logger.Error(err, "unable to create or update Config")
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Loaded Config", "name", config.Name)
 
 	return ctrl.Result{}, nil
 }
@@ -86,5 +93,8 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 func (r *ConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&k8sversionerv1alpha1.Config{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: 1,
+		}).
 		Complete(r)
 }
