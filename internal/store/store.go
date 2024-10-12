@@ -35,8 +35,12 @@ type Buddle struct {
 type Store interface {
 	// CreateOrUpdateConfig creates or updates a Config resource
 	CreateOrUpdateConfig(config *k8sversionerv1alpha1.Config) error
+	// DeleteConfig deletes a Config resource
+	DeleteConfig(configName string) error
 	// CreateOrUpdateGitConfig creates or updates a GitConfig resource
 	CreateOrUpdateGitConfig(gitConfig *k8sversionerv1alpha1.GitConfig) error
+	// DeleteGitConfig deletes a GitConfig resource
+	DeleteGitConfig(gitConfigName string) error
 	// ConfigProducer returns a channel with Config resources
 	ConfigProducer() <-chan Buddle
 	// SubmitConfig submits a Config resource
@@ -63,9 +67,27 @@ func (s *store) CreateOrUpdateConfig(config *k8sversionerv1alpha1.Config) error 
 	return nil
 }
 
+// DeleteConfig deletes a Config resource
+func (s *store) DeleteConfig(configName string) error {
+	if _, ok := s.cfgMap.Load(configName); !ok {
+		return ErrConfigNotFound
+	}
+	s.cfgMap.Delete(configName)
+	return nil
+}
+
 // CreateOrUpdateGitConfig creates or updates a GitConfig resource
 func (s *store) CreateOrUpdateGitConfig(gitConfig *k8sversionerv1alpha1.GitConfig) error {
 	s.gitCfgMap.Store(gitConfig.Name, gitConfig)
+	return nil
+}
+
+// DeleteGitConfig deletes a GitConfig resource
+func (s *store) DeleteGitConfig(gitConfigName string) error {
+	if _, ok := s.gitCfgMap.Load(gitConfigName); !ok {
+		return ErrGitConfigNotFound
+	}
+	s.gitCfgMap.Delete(gitConfigName)
 	return nil
 }
 
