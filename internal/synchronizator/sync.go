@@ -56,6 +56,11 @@ func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle, objs .
 		for _, item := range obj.Items {
 			item = *cleanResource(&item)
 
+			if !matchesFilters(&item, buddle.Cfg.Spec.Labels, buddle.Cfg.Spec.Annotations) {
+				logger.Info("Resource does not match filters, skipping", "name", item.GetName())
+				continue
+			}
+
 			if err := s.syncIndividualResource(ctx, buddle, gitClient, &item); err != nil {
 				if err == git.ErrAlreadyUpToDate {
 					logger.Info("No changes to commit and push", "name", item.GetName())
