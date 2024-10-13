@@ -9,7 +9,7 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: controller-git-k8s
-repo: github.com/RafOSS-br/K8sVersionerls
+repo: github.com/RafOSS-br/K8sVersioner
 resources:
 - api:
     crdVersion: v1
@@ -18,7 +18,7 @@ resources:
   domain: k8sversioner.app
   group: versioning
   kind: Config
-  path: github.com/RafOSS-br/K8sVersionerls/api/v1alpha1
+  path: github.com/RafOSS-br/K8sVersioner/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -27,6 +27,6 @@ resources:
   domain: k8sversioner.app
   group: versioning
   kind: GitConfig
-  path: github.com/RafOSS-br/K8sVersionerls/api/v1alpha1
+  path: github.com/RafOSS-br/K8sVersioner/api/v1alpha1
   version: v1alpha1
 version: "3"
