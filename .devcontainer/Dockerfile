@@ -13,3 +13,6 @@ RUN export KIND_VERSION=0.11.1 && \
     curl -Lo kind https://kind.sigs.k8s.io/dl/v${KIND_VERSION}/kind-linux-amd64 && \
     chmod +x kind && \
     mv kind /usr/local/bin
+
+# Install golangci-lint
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0

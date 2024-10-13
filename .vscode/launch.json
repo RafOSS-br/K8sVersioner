@@ -10,11 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/main.go",
-            "args": [
-                "kube-operator",
-                // "--one-shot"
-            ]
+            "program": "${workspaceFolder}/cmd/main.go",
         }
     ]
 }
