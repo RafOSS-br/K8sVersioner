@@ -52,6 +52,8 @@ func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle) error 
 		return err
 	}
 
+	logger.Info("Synchronizing resources for config", "config", buddle.Cfg.Name, "namespace", buddle.Cfg.Namespace)
+
 	for _, resFilter := range buddle.Cfg.Spec.IncludeResource {
 		if err := s.syncResourceFilter(ctx, buddle, resFilter, gitClient); err != nil {
 			logger.Error(err, "Error synchronizing resource filter", "filter", resFilter)
@@ -72,10 +74,11 @@ func (s *SyncImpl) getGitClient(ctx context.Context, buddle *store.Buddle) (*git
 	logger := log.FromContext(ctx)
 	gitConfigKey := fmt.Sprintf("%s%s%s", buddle.Cfg.Spec.GitRef, MapKeySeparator, buddle.Cfg.Namespace)
 	gitClient, exists := s.gitClients[gitConfigKey]
+	var err error
 	if !exists {
-		gitClient, err := git.NewGitClient(ctx, buddle)
+		gitClient, err = git.NewGitClient(ctx, buddle)
 		if err != nil {
-			logger.Error(err, "Error creating Git client")
+			logger.Error(err, "Error creating Git client", "config", buddle.Cfg.Name)
 			return nil, err
 		}
 		s.gitClients[gitConfigKey] = gitClient
@@ -86,7 +89,7 @@ func (s *SyncImpl) getGitClient(ctx context.Context, buddle *store.Buddle) (*git
 // syncResourceFilter handles synchronization for a specific resource filter
 func (s *SyncImpl) syncResourceFilter(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, gitClient *git.GitClient) error {
 	logger := log.FromContext(ctx)
-	namespaces, err := s.determineNamespaces(ctx, buddle.Cfg.Namespace)
+	namespaces, err := s.determineNamespaces(ctx, buddle.Cfg.Spec.Namespace)
 	if err != nil {
 		logger.Error(err, "Failed to determine namespaces", "config", buddle.Cfg.Name)
 		return err

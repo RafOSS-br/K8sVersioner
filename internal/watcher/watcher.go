@@ -140,10 +140,10 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		informer := cache.NewSharedInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					return w.dynamicClient.Resource(gvr).Namespace("").List(context.Background(), options)
+					return w.dynamicClient.Resource(gvr).Namespace(buddle.Cfg.Spec.Namespace).List(context.Background(), options)
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					return w.dynamicClient.Resource(gvr).Namespace("").Watch(context.Background(), options)
+					return w.dynamicClient.Resource(gvr).Namespace(buddle.Cfg.Spec.Namespace).Watch(context.Background(), options)
 				},
 			},
 			&unstructured.Unstructured{},
