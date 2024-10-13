@@ -29,7 +29,18 @@ type Informer struct {
 	Informer  cache.SharedInformer
 	StopCh    chan struct{}
 	WaitGroup sync.WaitGroup
-	Notify    func()
+}
+
+// Notify is a function that notifies the synchronizer
+func (i *Informer) Notify(ctx context.Context, key string, objs *unstructured.UnstructuredList, w *WatcherImpl) {
+	logger := log.FromContext(ctx)
+	err := w.synchronizer.Synchronize(ctx, i.Buddle, objs)
+	if err != nil {
+		logger.Error(err, "Failed to synchronize", "buddle", i.Buddle.Config.Cfg.Name)
+		return
+	}
+	logger.Info("Notified channel", "buddle", i.Buddle.Config.Cfg.Name)
+
 }
 
 // InformerMap maps a key to a map of GroupVersionKind to Informer
@@ -38,7 +49,6 @@ type InformerMap map[string]map[schema.GroupVersionKind]*Informer
 // WatcherImpl is a struct that implements the WatcherMgmt interface
 type WatcherImpl struct {
 	informers     InformerMap
-	notify        chan *store.Buddle
 	mu            sync.Mutex
 	dynamicClient dynamic.Interface
 	scheme        *runtime.Scheme
@@ -54,7 +64,6 @@ func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchroniz
 
 	return &WatcherImpl{
 		informers:     make(InformerMap),
-		notify:        make(chan *store.Buddle, 100), // Adjust buffer size as needed
 		dynamicClient: dynClient,
 		scheme:        scheme,
 		synchronizer:  sync,
@@ -160,45 +169,47 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		// Add event handlers
 		informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				u, ok := obj.(*unstructured.Unstructured)
-				if !ok {
+				u, err := assertUnstructuredList(obj)
+				if err != nil {
 					logger.Info("Failed to cast object to unstructured", "object", obj)
 					return
 				}
 				logger.Info("Resource added", "gvk", gvk, "name", u.GetName())
-				inf.Notify()
+				inf.Notify(ctx, key, &unstructured.UnstructuredList{
+					Items: []unstructured.Unstructured{*obj.(*unstructured.Unstructured)},
+				}, w)
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				u, ok := newObj.(*unstructured.Unstructured)
-				if !ok {
+				new, err := assertUnstructuredList(newObj)
+				if err != nil {
 					logger.Info("Failed to cast object to unstructured", "object", newObj)
 					return
 				}
-				logger.Info("Resource updated", "gvk", gvk, "name", u.GetName())
-				inf.Notify()
+				old, err := assertUnstructuredList(oldObj)
+				if err != nil {
+					logger.Info("Failed to cast object to unstructured", "object", oldObj)
+					return
+				}
+				if new.GetResourceVersion() == old.GetResourceVersion() {
+					return
+				}
+				logger.Info("Resource updated", "gvk", gvk, "name", new.GetName())
+				inf.Notify(ctx, key, &unstructured.UnstructuredList{
+					Items: []unstructured.Unstructured{*new},
+				}, w)
 			},
 			DeleteFunc: func(obj interface{}) {
-				u, ok := obj.(*unstructured.Unstructured)
-				if !ok {
+				u, err := assertUnstructuredList(obj)
+				if err != nil {
 					logger.Info("Failed to cast object to unstructured", "object", obj)
 					return
 				}
 				logger.Info("Resource deleted", "gvk", gvk, "name", u.GetName())
-				inf.Notify()
+				inf.Notify(ctx, key, &unstructured.UnstructuredList{
+					Items: []unstructured.Unstructured{*obj.(*unstructured.Unstructured)},
+				}, w)
 			},
 		})
-
-		// Assign Notify function
-		inf.Notify = func() {
-			select {
-			case w.notify <- buddle:
-				w.synchronizer.Synchronize(ctx, buddle)
-				logger.Info("Notified channel", "buddle", buddle.Config.Cfg.Name)
-			default:
-				logger.Info("Notify channel is full, dropping event", "buddle", buddle.Config.Cfg.Name)
-			}
-		}
-
 		// Start the informer in a separate goroutine
 		inf.WaitGroup.Add(1)
 		go func() {
@@ -214,6 +225,15 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 	}
 
 	return nil
+}
+
+// Helper function to assert the type of an object
+func assertUnstructuredList(obj interface{}) (*unstructured.Unstructured, error) {
+	u, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast object to unstructured")
+	}
+	return u, nil
 }
 
 // Helper function to deletes a stoped used informer and stop the informer

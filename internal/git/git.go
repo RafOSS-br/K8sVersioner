@@ -154,3 +154,12 @@ func (g *GitClient) SaveResource(ctx context.Context, path string, data []byte) 
 	}
 	return nil
 }
+
+// RemoveResource removes a resource from the git repository
+func (g *GitClient) RemoveResource(ctx context.Context, path string) error {
+	fullPath := filepath.Join(g.dir, path)
+	if err := os.Remove(fullPath); err != nil {
+		return err
+	}
+	return nil
+}

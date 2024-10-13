@@ -9,20 +9,17 @@ import (
 
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
 	"github.com/RafOSS-br/K8sVersioner/internal/git"
 	"github.com/RafOSS-br/K8sVersioner/internal/store"
 )
 
 // Sync defines the interface for resource synchronization
 type Sync interface {
-	Synchronize(ctx context.Context, buddle *store.Buddle) error
+	Synchronize(ctx context.Context, buddle *store.Buddle, objs ...*unstructured.UnstructuredList) error
 }
 
 // SyncImpl is the concrete implementation of the Sync interface
@@ -42,7 +39,7 @@ func NewSync(dyn dynamic.Interface, mapper meta.RESTMapper) Sync {
 }
 
 // Synchronize initiates the synchronization process
-func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle) error {
+func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle, objs ...*unstructured.UnstructuredList) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting resource synchronization")
 
@@ -54,14 +51,35 @@ func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle) error 
 
 	logger.Info("Synchronizing resources for config", "config", buddle.Cfg.Name, "namespace", buddle.Cfg.Namespace)
 
-	for _, resFilter := range buddle.Cfg.Spec.IncludeResource {
-		if err := s.syncResourceFilter(ctx, buddle, resFilter, gitClient); err != nil {
-			logger.Error(err, "Error synchronizing resource filter", "filter", resFilter)
+	for _, obj := range objs {
+		for _, item := range obj.Items {
+			item = *cleanResource(&item)
+
+			if err := s.syncIndividualResource(ctx, buddle, gitClient, &item); err != nil {
+				if err == git.ErrAlreadyUpToDate {
+					logger.Info("No changes to commit and push", "name", item.GetName())
+					continue
+				}
+				logger.Error(err, "Error synchronizing resource", "name", item.GetName())
+			}
 		}
 	}
 
 	logger.Info("Resource synchronization completed successfully")
 	return nil
+}
+
+func cleanResource(resource *unstructured.Unstructured) *unstructured.Unstructured {
+	// Remove 'status'
+	delete(resource.Object, "status")
+
+	// Remove 'managedFields'
+	resource.SetManagedFields(nil)
+
+	// Remove 'finalizers'
+	resource.SetFinalizers(nil)
+
+	return resource
 }
 
 const (
@@ -86,127 +104,46 @@ func (s *SyncImpl) getGitClient(ctx context.Context, buddle *store.Buddle) (*git
 	return gitClient, nil
 }
 
-// syncResourceFilter handles synchronization for a specific resource filter
-func (s *SyncImpl) syncResourceFilter(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, gitClient *git.GitClient) error {
+// syncIndividualResource synchronizes an individual Kubernetes resource
+func (s *SyncImpl) syncIndividualResource(ctx context.Context, buddle *store.Buddle, gitClient *git.GitClient, item *unstructured.Unstructured) error {
 	logger := log.FromContext(ctx)
-	namespaces, err := s.determineNamespaces(ctx, buddle.Cfg.Spec.Namespace)
+
+	data, err := s.serializeResource(item, buddle.Cfg.Spec.OutputType)
 	if err != nil {
-		logger.Error(err, "Failed to determine namespaces", "config", buddle.Cfg.Name)
 		return err
 	}
 
-	gvk := schema.FromAPIVersionAndKind(resFilter.APIVersion, resFilter.Name)
-	mapping, err := s.restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		logger.Error(err, "Error getting REST mapping", "kind", gvk.Kind)
-		return err
-	}
+	path := generateFilePath(buddle.Cfg.Spec.FolderStructure, item)
 
-	for _, namespace := range namespaces {
-		if err := s.syncNamespace(ctx, buddle, resFilter, mapping, namespace, gitClient); err != nil {
-			logger.Error(err, "Error syncing namespace", "namespace", namespace)
+	if isDeletionEvent(item) {
+		if err := gitClient.RemoveResource(ctx, path); err != nil {
+			logger.Error(err, "Error removing the resource from Git", "path", path)
+			return err
+		}
+	} else {
+		if err := gitClient.SaveResource(ctx, path, data); err != nil {
+			logger.Error(err, "Error saving the resource to Git", "path", path)
+			return err
 		}
 	}
 
-	commitMsg := fmt.Sprintf("Resources synchronized for %s/%s", buddle.Cfg.Namespace, buddle.Cfg.Name)
-	if err := gitClient.CommitAndPush(ctx, commitMsg); err != nil {
+	if err := gitClient.CommitAndPush(ctx, fmt.Sprintf("Add %s %s", item.GetKind(), item.GetName())); err != nil {
 		if err == git.ErrAlreadyUpToDate {
-			logger.Info("No changes to commit")
+			logger.Info("No changes to commit and push", "path", path)
 			return nil
 		}
-		logger.Error(err, "Error committing and pushing to Git")
+		logger.Error(err, "Error committing and pushing changes to Git", "path", path)
 		return err
 	}
 
+	logger.Info("Resource saved to Git", "name", item.GetName(), "namespace", item.GetNamespace(), "path", path)
 	return nil
 }
 
-// determineNamespaces determines the list of namespaces to process based on the configuration
-func (s *SyncImpl) determineNamespaces(ctx context.Context, namespace string) ([]string, error) {
-	switch namespace {
-	case "*", "all":
-		return s.listAllNamespaces(ctx)
-	case "":
-		// Cluster-wide resources (no namespace)
-		return []string{""}, nil
-	default:
-		return []string{namespace}, nil
-	}
-}
-
-// listAllNamespaces retrieves all namespaces in the cluster
-func (s *SyncImpl) listAllNamespaces(ctx context.Context) ([]string, error) {
-	nsList, err := s.dynClient.Resource(schema.GroupVersionResource{
-		Group:    "",
-		Version:  "v1",
-		Resource: "namespaces",
-	}).List(ctx, metav1ListOptions())
-	if err != nil {
-		return nil, fmt.Errorf("failed to list namespaces: %w", err)
-	}
-
-	namespaces := make([]string, 0, len(nsList.Items))
-	for _, ns := range nsList.Items {
-		namespaces = append(namespaces, ns.GetName())
-	}
-	return namespaces, nil
-}
-
-// syncNamespace synchronizes resources within a specific namespace
-func (s *SyncImpl) syncNamespace(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, mapping *meta.RESTMapping, namespace string, gitClient *git.GitClient) error {
-	logger := log.FromContext(ctx)
-	resourceClient := s.dynClient.Resource(mapping.Resource).Namespace(namespace)
-
-	list, err := resourceClient.List(ctx, metav1ListOptions())
-	if err != nil {
-		logger.Error(err, "Error listing resources", "resource", mapping.Resource.Resource, "namespace", namespace)
-		return err
-	}
-
-	for _, item := range list.Items {
-		if !matchesFilters(&item, buddle.Cfg.Spec.Labels, buddle.Cfg.Spec.Annotations) {
-			continue
-		}
-
-		if err := s.syncIndividualResource(ctx, buddle, resFilter, gitClient, &item, mapping); err != nil {
-			logger.Error(err, "Error synchronizing resource", "resource", mapping.Resource.Resource, "name", item.GetName())
-		}
-	}
-
-	return nil
-}
-
-// syncIndividualResource synchronizes an individual Kubernetes resource
-func (s *SyncImpl) syncIndividualResource(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, gitClient *git.GitClient, item *unstructured.Unstructured, mapping *meta.RESTMapping) error {
-	logger := log.FromContext(ctx)
-	cleanedItem := s.prepareResource(item, resFilter)
-
-	data, err := s.serializeResource(cleanedItem, buddle.Cfg.Spec.OutputType)
-	if err != nil {
-		return err
-	}
-
-	path := generateFilePath(buddle.Cfg.Spec.FolderStructure, cleanedItem)
-	if err := gitClient.SaveResource(ctx, path, data); err != nil {
-		logger.Error(err, "Error saving the resource to Git", "path", path)
-		return err
-	}
-
-	logger.Info("Resource saved to Git", "resource", mapping.Resource.Resource, "name", item.GetName(), "namespace", item.GetNamespace(), "path", path)
-	return nil
-}
-
-// prepareResource cleans the resource based on the filter settings
-func (s *SyncImpl) prepareResource(item *unstructured.Unstructured, resFilter k8sversionerv1alpha1.ResourceFilter) *unstructured.Unstructured {
-	if !resFilter.WithManagedFields {
-		item.SetManagedFields(nil)
-	}
-
-	if !resFilter.WithStatusField {
-		delete(item.Object, "status")
-	}
-
-	return item
+// Helper function to check if is deletion event
+func isDeletionEvent(obj *unstructured.Unstructured) bool {
+	deletionTimestamp := obj.GetDeletionTimestamp()
+	return deletionTimestamp != nil
 }
 
 // serializeResource serializes the resource to the desired format
@@ -269,9 +206,4 @@ func matchesFilters(item *unstructured.Unstructured, labels, annotations map[str
 		}
 	}
 	return true
-}
-
-// metav1ListOptions creates a default ListOptions object
-func metav1ListOptions() metav1.ListOptions {
-	return metav1.ListOptions{}
 }
