@@ -50,6 +50,8 @@ type store struct {
 	configChan chan *Buddle
 	gitCfgMap  sync.Map
 	cfgMap     sync.Map
+	waitMap    sync.Map
+	waitMu     sync.Mutex
 }
 
 // NewStore returns a new Store
@@ -81,6 +83,11 @@ func (s *store) DeleteConfig(configName string) error {
 // CreateOrUpdateGitConfig creates or updates a GitConfig resource
 func (s *store) CreateOrUpdateGitConfig(gitConfig *k8sversionerv1alpha1.GitConfig) error {
 	s.gitCfgMap.Store(gitConfig.Name, gitConfig)
+	if v, ok := s.GetFromWaitMap(gitConfig.Name); ok {
+		for _, cfg := range v {
+			s.SubmitConfig(cfg.Cfg.Name)
+		}
+	}
 	return nil
 }
 
@@ -121,6 +128,7 @@ func (s *store) SubmitConfig(cfgName string) error {
 	}
 	gitConfig, ok := s.gitCfgMap.Load(cfg.Cfg.Spec.GitRef)
 	if !ok {
+		s.AddToWaitMap(cfg.Cfg.Spec.GitRef, cfg)
 		return ErrGitConfigNotFound
 	}
 	gitCfg, ok := gitConfig.(*k8sversionerv1alpha1.GitConfig)
@@ -129,4 +137,29 @@ func (s *store) SubmitConfig(cfgName string) error {
 	}
 	s.configChan <- &Buddle{Config: cfg, GitConfig: gitCfg}
 	return nil
+}
+
+// Helper functions to manager waitMap
+
+func (s *store) AddToWaitMap(key string, value *Config) {
+	s.waitMu.Lock()
+	defer s.waitMu.Unlock()
+
+	v, ok := s.waitMap.Load(key)
+	if !ok {
+		s.waitMap.Store(key, []*Config{value})
+	} else {
+		s.waitMap.Store(key, append(v.([]*Config), value))
+	}
+}
+
+func (s *store) GetFromWaitMap(key string) ([]*Config, bool) {
+	s.waitMu.Lock()
+	defer s.waitMu.Unlock()
+
+	value, ok := s.waitMap.Load(key)
+	if !ok {
+		return nil, false
+	}
+	return value.([]*Config), true
 }

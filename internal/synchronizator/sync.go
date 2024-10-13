@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
 	"github.com/RafOSS-br/K8sVersioner/internal/git"
@@ -43,21 +43,22 @@ func NewSync(dyn dynamic.Interface, mapper meta.RESTMapper) Sync {
 
 // Synchronize initiates the synchronization process
 func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle) error {
-	klog.Info("Starting resource synchronization")
+	logger := log.FromContext(ctx)
+	logger.Info("Starting resource synchronization")
 
 	gitClient, err := s.getGitClient(ctx, buddle)
 	if err != nil {
-		klog.ErrorS(err, "Skipping config due to Git client error", "config", buddle.Cfg.Name, "namespace", buddle.Cfg.Namespace)
+		logger.Error(err, "Skipping config due to Git client error", "config", buddle.Cfg.Name, "namespace", buddle.Cfg.Namespace)
 		return err
 	}
 
 	for _, resFilter := range buddle.Cfg.Spec.IncludeResource {
 		if err := s.syncResourceFilter(ctx, buddle, resFilter, gitClient); err != nil {
-			klog.ErrorS(err, "Error synchronizing resource filter", "filter", resFilter)
+			logger.Error(err, "Error synchronizing resource filter", "filter", resFilter)
 		}
 	}
 
-	klog.Info("Resource synchronization completed successfully")
+	logger.Info("Resource synchronization completed successfully")
 	return nil
 }
 
@@ -68,12 +69,13 @@ const (
 
 // getGitClient retrieves or creates a Git client for the given configuration
 func (s *SyncImpl) getGitClient(ctx context.Context, buddle *store.Buddle) (*git.GitClient, error) {
+	logger := log.FromContext(ctx)
 	gitConfigKey := fmt.Sprintf("%s%s%s", buddle.Cfg.Spec.GitRef, MapKeySeparator, buddle.Cfg.Namespace)
 	gitClient, exists := s.gitClients[gitConfigKey]
 	if !exists {
 		gitClient, err := git.NewGitClient(ctx, buddle)
 		if err != nil {
-			klog.ErrorS(err, "Error creating Git client")
+			logger.Error(err, "Error creating Git client")
 			return nil, err
 		}
 		s.gitClients[gitConfigKey] = gitClient
@@ -83,32 +85,33 @@ func (s *SyncImpl) getGitClient(ctx context.Context, buddle *store.Buddle) (*git
 
 // syncResourceFilter handles synchronization for a specific resource filter
 func (s *SyncImpl) syncResourceFilter(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, gitClient *git.GitClient) error {
+	logger := log.FromContext(ctx)
 	namespaces, err := s.determineNamespaces(ctx, buddle.Cfg.Namespace)
 	if err != nil {
-		klog.ErrorS(err, "Failed to determine namespaces", "config", buddle.Cfg.Name)
+		logger.Error(err, "Failed to determine namespaces", "config", buddle.Cfg.Name)
 		return err
 	}
 
 	gvk := schema.FromAPIVersionAndKind(resFilter.APIVersion, resFilter.Name)
 	mapping, err := s.restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		klog.ErrorS(err, "Error getting REST mapping", "kind", gvk.Kind)
+		logger.Error(err, "Error getting REST mapping", "kind", gvk.Kind)
 		return err
 	}
 
 	for _, namespace := range namespaces {
 		if err := s.syncNamespace(ctx, buddle, resFilter, mapping, namespace, gitClient); err != nil {
-			klog.ErrorS(err, "Error syncing namespace", "namespace", namespace)
+			logger.Error(err, "Error syncing namespace", "namespace", namespace)
 		}
 	}
 
 	commitMsg := fmt.Sprintf("Resources synchronized for %s/%s", buddle.Cfg.Namespace, buddle.Cfg.Name)
 	if err := gitClient.CommitAndPush(ctx, commitMsg); err != nil {
 		if err == git.ErrAlreadyUpToDate {
-			klog.Warning("No changes to commit")
+			logger.Info("No changes to commit")
 			return nil
 		}
-		klog.ErrorS(err, "Error committing and pushing to Git")
+		logger.Error(err, "Error committing and pushing to Git")
 		return err
 	}
 
@@ -148,11 +151,12 @@ func (s *SyncImpl) listAllNamespaces(ctx context.Context) ([]string, error) {
 
 // syncNamespace synchronizes resources within a specific namespace
 func (s *SyncImpl) syncNamespace(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, mapping *meta.RESTMapping, namespace string, gitClient *git.GitClient) error {
+	logger := log.FromContext(ctx)
 	resourceClient := s.dynClient.Resource(mapping.Resource).Namespace(namespace)
 
 	list, err := resourceClient.List(ctx, metav1ListOptions())
 	if err != nil {
-		klog.ErrorS(err, "Error listing resources", "resource", mapping.Resource.Resource, "namespace", namespace)
+		logger.Error(err, "Error listing resources", "resource", mapping.Resource.Resource, "namespace", namespace)
 		return err
 	}
 
@@ -162,7 +166,7 @@ func (s *SyncImpl) syncNamespace(ctx context.Context, buddle *store.Buddle, resF
 		}
 
 		if err := s.syncIndividualResource(ctx, buddle, resFilter, gitClient, &item, mapping); err != nil {
-			klog.ErrorS(err, "Error synchronizing resource", "resource", mapping.Resource.Resource, "name", item.GetName())
+			logger.Error(err, "Error synchronizing resource", "resource", mapping.Resource.Resource, "name", item.GetName())
 		}
 	}
 
@@ -171,6 +175,7 @@ func (s *SyncImpl) syncNamespace(ctx context.Context, buddle *store.Buddle, resF
 
 // syncIndividualResource synchronizes an individual Kubernetes resource
 func (s *SyncImpl) syncIndividualResource(ctx context.Context, buddle *store.Buddle, resFilter k8sversionerv1alpha1.ResourceFilter, gitClient *git.GitClient, item *unstructured.Unstructured, mapping *meta.RESTMapping) error {
+	logger := log.FromContext(ctx)
 	cleanedItem := s.prepareResource(item, resFilter)
 
 	data, err := s.serializeResource(cleanedItem, buddle.Cfg.Spec.OutputType)
@@ -180,11 +185,11 @@ func (s *SyncImpl) syncIndividualResource(ctx context.Context, buddle *store.Bud
 
 	path := generateFilePath(buddle.Cfg.Spec.FolderStructure, cleanedItem)
 	if err := gitClient.SaveResource(ctx, path, data); err != nil {
-		klog.ErrorS(err, "Error saving the resource to Git", "path", path)
+		logger.Error(err, "Error saving the resource to Git", "path", path)
 		return err
 	}
 
-	klog.InfoS("Resource saved to Git", "resource", mapping.Resource.Resource, "name", item.GetName(), "namespace", item.GetNamespace(), "path", path)
+	logger.Info("Resource saved to Git", "resource", mapping.Resource.Resource, "name", item.GetName(), "namespace", item.GetNamespace(), "path", path)
 	return nil
 }
 
@@ -211,6 +216,7 @@ func (s *SyncImpl) serializeResource(item *unstructured.Unstructured, outputType
 
 // generateFilePath generates the file path based on the folder structure template
 func generateFilePath(structure string, item *unstructured.Unstructured) string {
+	logger := log.FromContext(context.Background())
 	namespace := item.GetNamespace()
 	if namespace == "" {
 		namespace = "all"
@@ -220,7 +226,7 @@ func generateFilePath(structure string, item *unstructured.Unstructured) string 
 
 	templ, err := template.New("path").Parse(structure)
 	if err != nil {
-		klog.ErrorS(err, "Error parsing folder structure template")
+		logger.Error(err, "Error parsing folder structure template")
 		return ""
 	}
 
@@ -236,7 +242,7 @@ func generateFilePath(structure string, item *unstructured.Unstructured) string 
 
 	var b bytes.Buffer
 	if err := templ.Execute(&b, data); err != nil {
-		klog.ErrorS(err, "Error executing folder structure template")
+		logger.Error(err, "Error executing folder structure template")
 		return ""
 	}
 

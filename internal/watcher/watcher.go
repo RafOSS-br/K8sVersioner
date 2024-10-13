@@ -160,17 +160,29 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		// Add event handlers
 		informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				u := obj.(*unstructured.Unstructured)
+				u, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					logger.Info("Failed to cast object to unstructured", "object", obj)
+					return
+				}
 				logger.Info("Resource added", "gvk", gvk, "name", u.GetName())
 				inf.Notify()
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				u := newObj.(*unstructured.Unstructured)
+				u, ok := newObj.(*unstructured.Unstructured)
+				if !ok {
+					logger.Info("Failed to cast object to unstructured", "object", newObj)
+					return
+				}
 				logger.Info("Resource updated", "gvk", gvk, "name", u.GetName())
 				inf.Notify()
 			},
 			DeleteFunc: func(obj interface{}) {
-				u := obj.(*unstructured.Unstructured)
+				u, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					logger.Info("Failed to cast object to unstructured", "object", obj)
+					return
+				}
 				logger.Info("Resource deleted", "gvk", gvk, "name", u.GetName())
 				inf.Notify()
 			},
@@ -180,9 +192,10 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		inf.Notify = func() {
 			select {
 			case w.notify <- buddle:
+				w.synchronizer.Synchronize(ctx, buddle)
+				logger.Info("Notified channel", "buddle", buddle.Config.Cfg.Name)
 			default:
 				logger.Info("Notify channel is full, dropping event", "buddle", buddle.Config.Cfg.Name)
-				w.synchronizer.Synchronize(ctx, buddle)
 			}
 		}
 
