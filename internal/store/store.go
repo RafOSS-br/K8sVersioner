@@ -4,10 +4,10 @@ import (
 	"errors"
 	"sync"
 
-	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
+	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
 )
 
-var StoreSingleton Store = &store{}
+var StoreSingleton Store = NewStore(100)
 
 // Config is a struct that stores a Config and mutex
 type Config struct {
@@ -27,7 +27,7 @@ func (c *Config) Unlock() {
 
 // Buddle is a struct that contains a Config and a GitConfig
 type Buddle struct {
-	Config    *Config
+	*Config
 	GitConfig *k8sversionerv1alpha1.GitConfig
 }
 
@@ -42,14 +42,12 @@ type Store interface {
 	// DeleteGitConfig deletes a GitConfig resource
 	DeleteGitConfig(gitConfigName string) error
 	// ConfigProducer returns a channel with Config resources
-	ConfigProducer() <-chan Buddle
-	// SubmitConfig submits a Config resource
-	SubmitConfig(cfgName string) error
+	ConfigProducer() <-chan *Buddle
 }
 
 // store is a struct that implements the Store interface
 type store struct {
-	configChan chan Buddle
+	configChan chan *Buddle
 	gitCfgMap  sync.Map
 	cfgMap     sync.Map
 }
@@ -57,13 +55,17 @@ type store struct {
 // NewStore returns a new Store
 func NewStore(poolSize int) Store {
 	return &store{
-		configChan: make(chan Buddle, poolSize),
+		configChan: make(chan *Buddle, poolSize),
 	}
 }
 
 // CreateOrUpdateConfig creates or updates a Config resource
 func (s *store) CreateOrUpdateConfig(config *k8sversionerv1alpha1.Config) error {
 	s.cfgMap.Store(config.Name, &Config{Cfg: config})
+	err := s.SubmitConfig(config.Name)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -92,7 +94,7 @@ func (s *store) DeleteGitConfig(gitConfigName string) error {
 }
 
 // ConfigProducer returns a channel with Config resources
-func (s *store) ConfigProducer() <-chan Buddle {
+func (s *store) ConfigProducer() <-chan *Buddle {
 	return s.configChan
 }
 
@@ -103,7 +105,7 @@ var (
 	ErrGitConfigNotFound = errors.New("gitconfig not found")
 	// ErrUnexpectedTypeOfConfig is returned when the type of the Config is unexpected
 	ErrConfigUnexpectedType = errors.New("expected type *Config, got another type")
-	// ErrUnexpectedTypeOfGitConfig is returned when the type of the GitConfig is unexpected
+	// ErrUnexpectedTypeOfGitConsfig is returned when the type of the GitConfig is unexpected
 	ErrGitConfigUnexpectedType = errors.New("expected type *k8sversionerv1alpha1.GitConfig, got another type")
 )
 
@@ -125,6 +127,6 @@ func (s *store) SubmitConfig(cfgName string) error {
 	if !ok {
 		return ErrGitConfigUnexpectedType
 	}
-	s.configChan <- Buddle{Config: cfg, GitConfig: gitCfg}
+	s.configChan <- &Buddle{Config: cfg, GitConfig: gitCfg}
 	return nil
 }

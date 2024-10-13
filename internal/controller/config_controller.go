@@ -26,8 +26,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
-	"github.com/RafOSS-br/K8sVersionerls/internal/store"
+	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
+	"github.com/RafOSS-br/K8sVersioner/internal/store"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -74,12 +74,15 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	err := store.StoreSingleton.CreateOrUpdateConfig(config)
 	if err != nil {
+		if err == store.ErrGitConfigNotFound {
+			logger.Info("GitConfig not found")
+			return ctrl.Result{}, nil
+		}
 		logger.Error(err, "unable to create or update Config")
 		return ctrl.Result{}, err
 	}
 
 	logger.Info("Loaded Config", "name", config.Name)
-
 	return ctrl.Result{}, nil
 }
 

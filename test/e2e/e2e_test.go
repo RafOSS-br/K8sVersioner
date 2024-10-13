@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/RafOSS-br/K8sVersionerls/test/utils"
+	"github.com/RafOSS-br/K8sVersioner/test/utils"
 )
 
 const namespace = "controller-git-k8s-system"

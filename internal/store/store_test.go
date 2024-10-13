@@ -6,7 +6,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
+	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,6 +27,12 @@ type MockGitConfig struct {
 func TestCreateOrUpdateConfig(t *testing.T) {
 	s := NewStore(10)
 
+	gitConfig := &k8sversionerv1alpha1.GitConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-gitconfig",
+		},
+	}
+
 	config := &k8sversionerv1alpha1.Config{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-config",
@@ -35,8 +41,9 @@ func TestCreateOrUpdateConfig(t *testing.T) {
 			GitRef: "test-gitconfig",
 		},
 	}
-
-	err := s.CreateOrUpdateConfig(config)
+	err := s.CreateOrUpdateGitConfig(gitConfig)
+	assert.NoError(t, err)
+	err = s.CreateOrUpdateConfig(config)
 	assert.NoError(t, err)
 
 	// Verify if the config was stored correctly
@@ -88,11 +95,11 @@ func TestSubmitConfig(t *testing.T) {
 	}
 
 	// Store the Config and the GitConfig
-	s.CreateOrUpdateConfig(config)
-	s.CreateOrUpdateGitConfig(gitConfig)
-
-	err := s.SubmitConfig("test-config")
+	err := s.CreateOrUpdateGitConfig(gitConfig)
 	assert.NoError(t, err)
+	err = s.CreateOrUpdateConfig(config)
+	assert.NoError(t, err)
+
 	select {
 	case buddle := <-s.ConfigProducer():
 		assert.Equal(t, config, buddle.Config.Cfg, "Config in Buddle does not match the expected")
@@ -105,7 +112,7 @@ func TestSubmitConfig(t *testing.T) {
 func TestSubmitConfig_ConfigNotFound(t *testing.T) {
 	s := NewStore(10)
 
-	err := s.SubmitConfig("nonexistent-config")
+	err := s.(*store).SubmitConfig("nonexistent-config")
 	assert.ErrorIs(t, err, ErrConfigNotFound)
 }
 
@@ -123,7 +130,7 @@ func TestSubmitConfig_GitConfigNotFound(t *testing.T) {
 
 	s.CreateOrUpdateConfig(config)
 
-	err := s.SubmitConfig("test-config")
+	err := s.(*store).SubmitConfig("test-config")
 	assert.ErrorIs(t, err, ErrGitConfigNotFound)
 }
 
@@ -132,7 +139,7 @@ func TestSubmitConfig_UnexpectedType(t *testing.T) {
 
 	s.(*store).cfgMap.Store("test-config", &MockConfig{Name: "test-config"})
 
-	err := s.SubmitConfig("test-config")
+	err := s.(*store).SubmitConfig("test-config")
 	assert.ErrorIs(t, err, ErrConfigUnexpectedType)
 }
 
@@ -151,7 +158,7 @@ func TestSubmitConfig_GitConfigUnexpectedType(t *testing.T) {
 	s.CreateOrUpdateConfig(config)
 	s.(*store).gitCfgMap.Store("test-gitconfig", &MockGitConfig{Name: "test-gitconfig"})
 
-	err := s.SubmitConfig("test-config")
+	err := s.(*store).SubmitConfig("test-config")
 	assert.ErrorIs(t, err, ErrGitConfigUnexpectedType)
 }
 

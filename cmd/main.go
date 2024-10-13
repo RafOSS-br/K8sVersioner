@@ -34,8 +34,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
-	"github.com/RafOSS-br/K8sVersionerls/internal/controller"
+	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
+	"github.com/RafOSS-br/K8sVersioner/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -119,6 +119,11 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	if err := mgr.Add(controller.NewSetupController(mgr.GetConfig(), mgr.GetScheme())); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Main")
 		os.Exit(1)
 	}
 

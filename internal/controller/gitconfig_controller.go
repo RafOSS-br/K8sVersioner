@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersionerls/api/v1alpha1"
-	"github.com/RafOSS-br/K8sVersionerls/internal/store"
+	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
+	"github.com/RafOSS-br/K8sVersioner/internal/store"
 	"github.com/go-playground/validator/v10"
 )
 
