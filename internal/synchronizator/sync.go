@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"text/template"
 
 	"gopkg.in/yaml.v2"
@@ -58,6 +59,10 @@ func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle, objs .
 			if err := s.syncIndividualResource(ctx, buddle, gitClient, &item); err != nil {
 				if err == git.ErrAlreadyUpToDate {
 					logger.Info("No changes to commit and push", "name", item.GetName())
+					continue
+				}
+				if os.IsNotExist(err) {
+					logger.Info("Resource not found in Git, skipping", "name", item.GetName())
 					continue
 				}
 				logger.Error(err, "Error synchronizing resource", "name", item.GetName())
@@ -117,6 +122,10 @@ func (s *SyncImpl) syncIndividualResource(ctx context.Context, buddle *store.Bud
 
 	if isDeletionEvent(item) {
 		if err := gitClient.RemoveResource(ctx, path); err != nil {
+			if os.IsNotExist(err) {
+				logger.Info("Resource not found in Git, skipping", "name", item.GetName())
+				return nil
+			}
 			logger.Error(err, "Error removing the resource from Git", "path", path)
 			return err
 		}
