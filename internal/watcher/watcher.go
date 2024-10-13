@@ -167,7 +167,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		}
 
 		// Add event handlers
-		informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				u, err := assertUnstructuredList(obj)
 				if err != nil {
@@ -210,6 +210,10 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 				}, w)
 			},
 		})
+		if err != nil {
+			logger.Error(err, "Failed to add event handlers", "gvk", gvk)
+			return err
+		}
 		// Start the informer in a separate goroutine
 		inf.WaitGroup.Add(1)
 		go func() {

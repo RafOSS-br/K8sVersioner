@@ -85,7 +85,10 @@ func (s *store) CreateOrUpdateGitConfig(gitConfig *k8sversionerv1alpha1.GitConfi
 	s.gitCfgMap.Store(gitConfig.Name, gitConfig)
 	if v, ok := s.GetFromWaitMap(gitConfig.Name); ok {
 		for _, cfg := range v {
-			s.SubmitConfig(cfg.Cfg.Name)
+			err := s.SubmitConfig(cfg.Cfg.Name)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
