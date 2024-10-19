@@ -20,14 +20,13 @@ import (
 
 // Sync defines the interface for resource synchronization
 type Sync interface {
-	Synchronize(ctx context.Context, buddle *store.Buddle, objs ...*unstructured.UnstructuredList) error
+	Synchronize(ctx context.Context, bundle *store.Bundle, objs ...*unstructured.UnstructuredList) error
 }
 
 // SyncImpl is the concrete implementation of the Sync interface
 type SyncImpl struct {
 	dynClient  dynamic.Interface
 	restMapper meta.RESTMapper
-	gitClients map[string]*git.GitClient
 }
 
 // NewSync creates a new instance of SyncImpl
@@ -35,48 +34,61 @@ func NewSync(dyn dynamic.Interface, mapper meta.RESTMapper) Sync {
 	return &SyncImpl{
 		dynClient:  dyn,
 		restMapper: mapper,
-		gitClients: make(map[string]*git.GitClient),
 	}
 }
 
 // Synchronize initiates the synchronization process
-func (s *SyncImpl) Synchronize(ctx context.Context, buddle *store.Buddle, objs ...*unstructured.UnstructuredList) error {
+func (s *SyncImpl) Synchronize(ctx context.Context, bundle *store.Bundle, objs ...*unstructured.UnstructuredList) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting resource synchronization")
 
-	gitClient, err := s.getGitClient(ctx, buddle)
-	if err != nil {
-		logger.Error(err, "Skipping config due to Git client error", "config", buddle.Cfg.Name, "namespace", buddle.Cfg.Namespace)
-		return err
-	}
-
-	logger.Info("Synchronizing resources for config", "config", buddle.Cfg.Name, "namespace", buddle.Cfg.Namespace)
-
-	for _, obj := range objs {
-		for _, item := range obj.Items {
-			item = *cleanResource(&item)
-
-			if !matchesFilters(&item, buddle.Cfg.Spec.Labels, buddle.Cfg.Spec.Annotations) {
-				logger.Info("Resource does not match filters, skipping", "name", item.GetName())
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Context cancelled, stopping synchronization")
+			return nil
+		default:
+			if !bundle.Git.TryLock() {
 				continue
 			}
 
-			if err := s.syncIndividualResource(ctx, buddle, gitClient, &item); err != nil {
-				if err == git.ErrAlreadyUpToDate {
-					logger.Info("No changes to commit and push", "name", item.GetName())
-					continue
-				}
-				if os.IsNotExist(err) {
-					logger.Info("Resource not found in Git, skipping", "name", item.GetName())
-					continue
-				}
-				logger.Error(err, "Error synchronizing resource", "name", item.GetName())
+			defer bundle.Git.Unlock()
+
+			gitClient, err := s.getGitClient(ctx, bundle)
+			if err != nil {
+				logger.Error(err, "Skipping config due to Git client error", "config", bundle.Config.Cfg.Name, "namespace", bundle.Config.Cfg.Namespace)
+				return err
 			}
+
+			logger.Info("Synchronizing resources for config", "config", bundle.Config.Cfg.Name, "namespace", bundle.Config.Cfg.Namespace)
+
+			for _, obj := range objs {
+				for _, item := range obj.Items {
+					item = *cleanResource(&item)
+
+					if !matchesFilters(&item, bundle.Config.Cfg.Spec.Labels, bundle.Config.Cfg.Spec.Annotations) {
+						logger.Info("Resource does not match filters, skipping", "name", item.GetName())
+						continue
+					}
+
+					if err := s.syncIndividualResource(ctx, bundle, gitClient, &item); err != nil {
+						if err == git.ErrAlreadyUpToDate {
+							logger.Info("No changes to commit and push", "name", item.GetName())
+							continue
+						}
+						if os.IsNotExist(err) {
+							logger.Info("Resource not found in Git, skipping", "name", item.GetName())
+							continue
+						}
+						logger.Error(err, "Error synchronizing resource", "name", item.GetName())
+					}
+				}
+			}
+
+			logger.Info("Resource synchronization completed successfully")
+			return nil
 		}
 	}
-
-	logger.Info("Resource synchronization completed successfully")
-	return nil
 }
 
 func cleanResource(resource *unstructured.Unstructured) *unstructured.Unstructured {
@@ -98,32 +110,25 @@ const (
 )
 
 // getGitClient retrieves or creates a Git client for the given configuration
-func (s *SyncImpl) getGitClient(ctx context.Context, buddle *store.Buddle) (*git.GitClient, error) {
-	logger := log.FromContext(ctx)
-	gitConfigKey := fmt.Sprintf("%s%s%s", buddle.Cfg.Spec.GitRef, MapKeySeparator, buddle.Cfg.Namespace)
-	gitClient, exists := s.gitClients[gitConfigKey]
-	var err error
-	if !exists {
-		gitClient, err = git.NewGitClient(ctx, buddle)
-		if err != nil {
-			logger.Error(err, "Error creating Git client", "config", buddle.Cfg.Name)
-			return nil, err
-		}
-		s.gitClients[gitConfigKey] = gitClient
+func (s *SyncImpl) getGitClient(ctx context.Context, bundle *store.Bundle) (*git.GitClient, error) {
+	gitClient, err := git.NewGitClient(ctx, bundle)
+	if err != nil {
+		return nil, err
 	}
+
 	return gitClient, nil
 }
 
 // syncIndividualResource synchronizes an individual Kubernetes resource
-func (s *SyncImpl) syncIndividualResource(ctx context.Context, buddle *store.Buddle, gitClient *git.GitClient, item *unstructured.Unstructured) error {
+func (s *SyncImpl) syncIndividualResource(ctx context.Context, bundle *store.Bundle, gitClient *git.GitClient, item *unstructured.Unstructured) error {
 	logger := log.FromContext(ctx)
 
-	data, err := s.serializeResource(item, buddle.Cfg.Spec.OutputType)
+	data, err := s.serializeResource(item, bundle.Config.Cfg.Spec.OutputType)
 	if err != nil {
 		return err
 	}
 
-	path := generateFilePath(buddle.Cfg.Spec.FolderStructure, item)
+	path := generateFilePath(bundle.Config.Cfg.Spec.FolderStructure, item)
 
 	if isDeletionEvent(item) {
 		if err := gitClient.RemoveResource(ctx, path); err != nil {
@@ -162,10 +167,10 @@ func isDeletionEvent(obj *unstructured.Unstructured) bool {
 
 // serializeResource serializes the resource to the desired format
 func (s *SyncImpl) serializeResource(item *unstructured.Unstructured, outputType string) ([]byte, error) {
-	if outputType == "yaml" {
-		return yaml.Marshal(item.Object)
+	if outputType == "json" {
+		return json.MarshalIndent(item.Object, "", "  ")
 	}
-	return json.MarshalIndent(item.Object, "", "  ")
+	return yaml.Marshal(item.Object)
 }
 
 // generateFilePath generates the file path based on the folder structure template

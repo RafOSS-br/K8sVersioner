@@ -49,12 +49,20 @@ spec:
                 type: string
               protocol:
                 type: string
-              repositoryFolder:
-                type: string
-              repositoryPath:
+              repositoryBasePath:
                 type: string
               repositoryUrl:
                 type: string
+              signature:
+                properties:
+                  email:
+                    type: string
+                  name:
+                    type: string
+                required:
+                - email
+                - name
+                type: object
               sshPrivateKeyPath:
                 type: string
               username:
@@ -62,8 +70,7 @@ spec:
             required:
             - branch
             - protocol
-            - repositoryFolder
-            - repositoryPath
+            - repositoryBasePath
             - repositoryUrl
             type: object
           status:

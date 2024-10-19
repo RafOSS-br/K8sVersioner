@@ -75,7 +75,7 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := store.StoreSingleton.CreateOrUpdateConfig(config)
 	if err != nil {
 		if err == store.ErrGitConfigNotFound {
-			logger.Info("GitConfig not found")
+			logger.Info(err.Error())
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "unable to create or update Config")

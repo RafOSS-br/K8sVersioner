@@ -1,165 +1,281 @@
-/*
-Package git provides a client to interact with a git repository.
-*/
 package git
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
 	"github.com/RafOSS-br/K8sVersioner/internal/store"
 	"github.com/go-git/go-git/v5"
-	gitConfig "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// GitClient is a struct that contains the git repository and the branch to work with
+// GitClient represents a Git client with repository information and internal state
 type GitClient struct {
-	repo   *git.Repository
-	auth   transport.AuthMethod
-	branch string
-	dir    string
-	push   bool
+	repo     *git.Repository
+	worktree *git.Worktree
+	auth     transport.AuthMethod
+	branch   string
+	dir      string
+	push     bool
+	mu       sync.Mutex
+	sig      v1alpha1.Signature
 }
 
-func newHttpAuth(cfg *store.Buddle) transport.AuthMethod {
+// newHTTPAuth creates an HTTP authentication method
+func newHTTPAuth(cfg *store.Bundle) transport.AuthMethod {
 	return &http.BasicAuth{
-		Username: cfg.GitConfig.Spec.Username,
-		Password: cfg.GitConfig.Spec.Password,
+		Username: cfg.Git.GitConfig.Spec.Username,
+		Password: cfg.Git.GitConfig.Spec.Password,
 	}
 }
 
-// NewGitClient creates a new git client
-func NewGitClient(ctx context.Context, cfg *store.Buddle) (*GitClient, error) {
-	var auth transport.AuthMethod
-	var url string
-	switch cfg.GitConfig.Spec.Protocol {
+// NewGitClient creates a new Git client based on the provided configuration
+func NewGitClient(ctx context.Context, cfg *store.Bundle) (*GitClient, error) {
+	var (
+		auth transport.AuthMethod
+		url  string
+		err  error
+	)
+
+	logger := log.FromContext(ctx)
+	repositoryURL := cfg.Git.GitConfig.Spec.RepositoryURL
+
+	// Configure authentication and URL based on the protocol
+	switch cfg.Git.GitConfig.Spec.Protocol {
 	case "https":
-		auth = newHttpAuth(cfg)
-		url = "https://" + cfg.GitConfig.Spec.RepositoryURL
+		auth = newHTTPAuth(cfg)
+		repositoryURL = strings.TrimPrefix(repositoryURL, "https://")
+		url = "https://" + repositoryURL
 	case "http":
-		auth = newHttpAuth(cfg)
-		url = "http://" + cfg.GitConfig.Spec.RepositoryURL
+		auth = newHTTPAuth(cfg)
+		repositoryURL = strings.TrimPrefix(repositoryURL, "http://")
+		url = "http://" + repositoryURL
 	case "ssh":
-		pKey, err := ssh.NewPublicKeysFromFile("git", cfg.GitConfig.Spec.SSHPrivateKeyPath, cfg.GitConfig.Spec.Password)
+		repositoryURL = strings.TrimPrefix(repositoryURL, "ssh://")
+		pKey, err := ssh.NewPublicKeysFromFile("git", cfg.Git.GitConfig.Spec.SSHPrivateKeyPath, cfg.Git.GitConfig.Spec.Password)
 		if err != nil {
 			return nil, err
 		}
 		auth = pKey
-		url = cfg.GitConfig.Spec.RepositoryURL
+		url = repositoryURL
 	default:
 		return nil, errors.New("unsupported protocol")
 	}
-	dir := cfg.GitConfig.Spec.RepositoryPath
-	if strings.HasSuffix(dir, "/") {
-		dir += cfg.GitConfig.Spec.RepositoryFolder
-	} else {
-		dir += "/" + cfg.GitConfig.Spec.RepositoryFolder
-	}
+
+	// Create a hash for the local directory
+	h := md5.New()
+	h.Write([]byte(cfg.Git.GitConfig.Spec.RepositoryURL + cfg.Git.GitConfig.Spec.Branch))
+	dirHash := hex.EncodeToString(h.Sum(nil))
+	dir := filepath.Join(cfg.Git.GitConfig.Spec.RepositoryBasePath, dirHash)
 
 	var repo *git.Repository
+	push := !cfg.Git.GitConfig.Spec.DryRun
 
-	push := true
-	if cfg.GitConfig.Spec.DryRun {
-		push = false
+	// Check if the base path exists
+	err = os.MkdirAll(dir, os.ModePerm)
+	if err != nil {
+		logger.Error(err, "Error creating base path", "path", cfg.Git.GitConfig.Spec.RepositoryBasePath)
+		return nil, err
 	}
 
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	// Try to open the local repository; if it fails, try to clone it
+	repo, err = git.PlainOpen(dir)
+	if err != nil {
+		logger.Info("Repository not found locally, attempting to clone", "url", url, "branch", cfg.Git.GitConfig.Spec.Branch)
 		repo, err = git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
 			URL:           url,
-			ReferenceName: plumbing.ReferenceName("refs/heads/" + cfg.GitConfig.Spec.Branch),
+			ReferenceName: plumbing.ReferenceName("refs/heads/" + cfg.Git.GitConfig.Spec.Branch),
 			Auth:          auth,
+			SingleBranch:  true,
+			Depth:         1,
 		})
 		if err != nil {
-			return nil, err
+			// Check if the error is due to a non-existent branch or uninitialized repository
+			logger.Info("Repository not found, initializing new local repository", "url", url, "branch", cfg.Git.GitConfig.Spec.Branch, "error", err)
+
+			// Initialize a new local repository
+			repo, err = git.PlainInit(dir, false)
+			if err != nil {
+				logger.Error(err, "Error initializing new local repository")
+				return nil, err
+			}
+
+			worktree, err := repo.Worktree()
+			if err != nil {
+				logger.Error(err, "Error getting worktree after initializing repository")
+				return nil, err
+			}
+
+			// Create a README file for the initial commit
+			readmePath := filepath.Join(dir, "README.md")
+			err = os.WriteFile(readmePath, []byte("# Repository Initialization"), 0644)
+			if err != nil {
+				logger.Error(err, "Error creating README.md for initial commit")
+				return nil, err
+			}
+
+			// Add the file to the index
+			_, err = worktree.Add("README.md")
+			if err != nil {
+				logger.Error(err, "Error adding README.md to worktree")
+				return nil, err
+			}
+
+			// Perform the initial commit
+			commitMsg := "Initial commit"
+			_, err = worktree.Commit(commitMsg, &git.CommitOptions{
+				Author: &object.Signature{
+					Name:  "Auto Commit K8sVersioner",
+					Email: "auto@k8sversioner.app",
+					When:  time.Now(),
+				},
+			})
+			if err != nil {
+				logger.Error(err, "Error performing initial commit")
+				return nil, err
+			}
+
+			// Set the remote origin
+			_, err = repo.CreateRemote(&config.RemoteConfig{
+				Name: "origin",
+				URLs: []string{url},
+			})
+			if err != nil {
+				logger.Error(err, "Error setting remote origin")
+				return nil, err
+			}
+
+			// Create and checkout the desired branch
+			branchRef := plumbing.ReferenceName("refs/heads/" + cfg.Git.GitConfig.Spec.Branch)
+			err = worktree.Checkout(&git.CheckoutOptions{
+				Branch: branchRef,
+				Create: true,
+				Hash:   plumbing.ZeroHash,
+			})
+			if err != nil {
+				logger.Error(err, "Error creating and checking out new branch", "branch", cfg.Git.GitConfig.Spec.Branch)
+				return nil, err
+			}
+
+			logger.Info("Initialized new local repository and created branch", "branch", cfg.Git.GitConfig.Spec.Branch)
 		}
-	} else {
-		repo, err = git.PlainOpen(dir)
-		if err != nil {
-			return nil, err
-		}
+	}
+
+	// Get the worktree
+	worktree, err := repo.Worktree()
+	if err != nil {
+		logger.Error(err, "Error getting worktree")
+		return nil, err
 	}
 
 	return &GitClient{
-		repo:   repo,
-		auth:   auth,
-		branch: cfg.GitConfig.Spec.Branch,
-		dir:    dir,
-		push:   push,
+		repo:     repo,
+		worktree: worktree,
+		auth:     auth,
+		branch:   cfg.Git.GitConfig.Spec.Branch,
+		dir:      dir,
+		push:     push,
+		sig:      cfg.Git.GitConfig.Spec.Signature,
 	}, nil
 }
 
-var ErrAlreadyUpToDate = errors.New("already up to date") // ErrAlreadyUpToDate is returned when there are no changes to commit
+// ErrAlreadyUpToDate is returned when there are no changes to commit
+var ErrAlreadyUpToDate = errors.New("already up to date")
 
-// CommitAndPush commits and pushes the changes to the git repository
+// CommitAndPush creates a commit and pushes changes to the remote repository
 func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
-	w, err := g.repo.Worktree()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	status, err := g.worktree.Status()
 	if err != nil {
 		return err
 	}
 
-	// Diff the changes
-	status, err := w.Status()
-	if err != nil {
-		return err
-	}
-
-	// If there are no changes, return
 	if status.IsClean() {
 		return ErrAlreadyUpToDate
 	}
 
-	// Adding all changes
-	if _, err := w.Add("."); err != nil {
-		return err
-	}
-
-	// Committing the changes
-	if _, err := w.Commit(message, &git.CommitOptions{}); err != nil {
-		return err
-	}
-
-	if !g.push {
-		return nil
-	}
-
-	// Pushing the changes
-	if err := g.repo.PushContext(ctx, &git.PushOptions{
-		RemoteName: "origin",
-		Auth:       g.auth,
-		RefSpecs: []gitConfig.RefSpec{
-			gitConfig.RefSpec("refs/heads/" + g.branch + ":refs/heads/" + g.branch),
+	_, err = g.worktree.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  g.sig.Name,
+			Email: g.sig.Email,
+			When:  time.Now(),
 		},
-	}); err != nil && err != git.NoErrAlreadyUpToDate {
+	})
+	if err != nil {
 		return err
+	}
+
+	if g.push {
+		err = g.repo.PushContext(ctx, &git.PushOptions{
+			RefSpecs: []config.RefSpec{
+				config.RefSpec("refs/heads/" + g.branch + ":refs/heads/" + g.branch),
+			},
+			RemoteName: "origin",
+			Auth:       g.auth,
+		})
+		if err != nil && err != git.NoErrAlreadyUpToDate {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// SaveResource saves a resource in the git repository
+// SaveResource saves a resource to the repository
 func (g *GitClient) SaveResource(ctx context.Context, path string, data []byte) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	fullPath := filepath.Join(g.dir, path)
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+	err := os.MkdirAll(filepath.Dir(fullPath), os.ModePerm)
+	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(fullPath, data, 0644); err != nil {
+
+	err = os.WriteFile(fullPath, data, 0644)
+	if err != nil {
 		return err
 	}
+
+	_, err = g.worktree.Add(path)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// RemoveResource removes a resource from the git repository
+// RemoveResource removes a resource from the repository
 func (g *GitClient) RemoveResource(ctx context.Context, path string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	fullPath := filepath.Join(g.dir, path)
-	if err := os.Remove(fullPath); err != nil {
+	err := os.Remove(fullPath)
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+
+	_, err = g.worktree.Remove(path)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

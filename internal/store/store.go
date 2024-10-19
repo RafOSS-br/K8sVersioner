@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"log"
 	"sync"
 
 	k8sversionerv1alpha1 "github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
@@ -12,23 +13,12 @@ var StoreSingleton Store = NewStore(100)
 // Config is a struct that stores a Config and mutex
 type Config struct {
 	Cfg *k8sversionerv1alpha1.Config
-	mu  sync.Mutex
 }
 
-// Lock locks the Config
-func (c *Config) Lock() {
-	c.mu.Lock()
-}
-
-// Unlock unlocks the Config
-func (c *Config) Unlock() {
-	c.mu.Unlock()
-}
-
-// Buddle is a struct that contains a Config and a GitConfig
-type Buddle struct {
-	*Config
-	GitConfig *k8sversionerv1alpha1.GitConfig
+// Bundle is a struct that contains a Config and a GitConfig
+type Bundle struct {
+	Config *Config
+	Git    *GitConfigEntry
 }
 
 // Store is an interface for managing Config and GitConfig resources
@@ -42,108 +32,148 @@ type Store interface {
 	// DeleteGitConfig deletes a GitConfig resource
 	DeleteGitConfig(gitConfigName string) error
 	// ConfigProducer returns a channel with Config resources
-	ConfigProducer() <-chan *Buddle
+	ConfigProducer() <-chan *Bundle
 }
 
-// GitConfigEntry is an intermediate struct that holds a GitConfig and its associated Configs
+// GitConfigEntry holds a GitConfig and its associated Configs, along with a mutex for synchronization
 type GitConfigEntry struct {
 	GitConfig *k8sversionerv1alpha1.GitConfig
-	Configs   []*Config
-	mu        sync.RWMutex
+	Configs   map[string]*Config
+	mu        sync.Mutex
 }
 
-// store is a struct that implements the Store interface
+// Lock locks the GitConfigEntry
+func (g *GitConfigEntry) Lock() {
+	g.mu.Lock()
+}
+
+// Unlock unlocks the GitConfigEntry
+func (g *GitConfigEntry) Unlock() {
+	g.mu.Unlock()
+}
+
+// TryLock tries to lock the GitConfigEntry
+func (g *GitConfigEntry) TryLock() bool {
+	return g.mu.TryLock()
+}
+
+// store implements the Store interface and manages Config and GitConfig resources
 type store struct {
-	configChan chan *Buddle
-	gitCfgMap  sync.Map // map[string]*GitConfigEntry
-	cfgMap     sync.Map // map[string]*Config
+	configChan chan *Bundle
+	gitCfgMap  map[string]*GitConfigEntry // map of GitConfigEntries
+	cfgMap     map[string]*Config         // map of Configs
+	mu         sync.RWMutex               // mutex to protect access to gitCfgMap and cfgMap
 }
 
-// NewStore returns a new Store
+// NewStore returns a new instance of Store
 func NewStore(poolSize int) Store {
 	return &store{
-		configChan: make(chan *Buddle, poolSize),
+		configChan: make(chan *Bundle, poolSize),
+		gitCfgMap:  make(map[string]*GitConfigEntry),
+		cfgMap:     make(map[string]*Config),
 	}
 }
 
 // CreateOrUpdateConfig creates or updates a Config resource
 func (s *store) CreateOrUpdateConfig(config *k8sversionerv1alpha1.Config) error {
 	cfg := &Config{Cfg: config}
-	s.cfgMap.Store(config.Name, cfg)
 
-	gitEntryInterface, ok := s.gitCfgMap.Load(config.Spec.GitRef)
-	if !ok {
+	// Lock the store for writing
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Store the Config in cfgMap
+	s.cfgMap[config.Name] = cfg
+
+	// Get or create the GitConfigEntry
+	gitRef := config.Spec.GitRef
+	entry, exists := s.gitCfgMap[gitRef]
+	if !exists {
+		// Create a new GitConfigEntry with an empty Configs map
+		entry = &GitConfigEntry{
+			Configs: make(map[string]*Config),
+		}
+		s.gitCfgMap[gitRef] = entry
+	}
+
+	// Lock the GitConfigEntry for modification
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	// Associate the Config with the GitConfigEntry
+	entry.Configs[config.Name] = cfg
+
+	if entry.GitConfig == nil {
 		// GitConfig not found; cannot associate Config yet
+		log.Printf("GitConfig '%s' not found; cannot process Config '%s' yet", gitRef, config.Name)
 		return ErrGitConfigNotFound
 	}
 
-	gitEntry, ok := gitEntryInterface.(*GitConfigEntry)
-	if !ok {
-		return ErrGitConfigUnexpectedType
-	}
-
-	// Associate the Config with the GitConfigEntry
-	gitEntry.mu.Lock()
-	defer gitEntry.mu.Unlock()
-	gitEntry.Configs = append(gitEntry.Configs, cfg)
-
 	// Submit the Config for processing
-	return s.submitConfig(cfg)
+	return s.submitConfig(cfg, entry)
 }
 
 // DeleteConfig deletes a Config resource
 func (s *store) DeleteConfig(configName string) error {
-	cfgInterface, ok := s.cfgMap.Load(configName)
-	if !ok {
+	// Lock the store for writing
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Retrieve and delete the Config from cfgMap
+	cfg, exists := s.cfgMap[configName]
+	if !exists {
+		log.Printf("Config '%s' not found", configName)
 		return ErrConfigNotFound
 	}
+	delete(s.cfgMap, configName)
 
-	cfg, ok := cfgInterface.(*Config)
-	if !ok {
-		return ErrConfigUnexpectedType
-	}
-
-	// Remove the Config from its associated GitConfigEntry
+	// Retrieve the associated GitConfigEntry
 	gitRef := cfg.Cfg.Spec.GitRef
-	gitEntryInterface, ok := s.gitCfgMap.Load(gitRef)
-	if ok {
-		gitEntry, ok := gitEntryInterface.(*GitConfigEntry)
-		if ok {
-			gitEntry.mu.Lock()
-			defer gitEntry.mu.Unlock()
-			for i, c := range gitEntry.Configs {
-				if c.Cfg.Name == configName {
-					// Remove the Config from the slice
-					gitEntry.Configs = append(gitEntry.Configs[:i], gitEntry.Configs[i+1:]...)
-					break
-				}
-			}
+	entry, exists := s.gitCfgMap[gitRef]
+	if exists {
+		// Lock the GitConfigEntry for modification
+		entry.mu.Lock()
+		defer entry.mu.Unlock()
+
+		// Remove the Config from the GitConfigEntry's Configs
+		delete(entry.Configs, configName)
+
+		// If no more Configs are associated, you might want to handle cleanup
+		if len(entry.Configs) == 0 {
+			log.Printf("No more Configs associated with GitConfig '%s'", gitRef)
 		}
 	}
 
-	s.cfgMap.Delete(configName)
 	return nil
 }
 
 // CreateOrUpdateGitConfig creates or updates a GitConfig resource
 func (s *store) CreateOrUpdateGitConfig(gitConfig *k8sversionerv1alpha1.GitConfig) error {
-	var entry *GitConfigEntry
+	// Lock the store for writing
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	entryInterface, loaded := s.gitCfgMap.LoadOrStore(gitConfig.Name, &GitConfigEntry{
-		GitConfig: gitConfig,
-		Configs:   []*Config{},
-	})
-	entry = entryInterface.(*GitConfigEntry)
+	// Get or create the GitConfigEntry
+	entry, exists := s.gitCfgMap[gitConfig.Name]
+	if !exists {
+		// Create a new GitConfigEntry with an empty Configs map
+		entry = &GitConfigEntry{
+			Configs: make(map[string]*Config),
+		}
+		s.gitCfgMap[gitConfig.Name] = entry
+	}
+
+	// Lock the GitConfigEntry for modification
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
-	if loaded {
-		// Update the existing GitConfig
-		entry.GitConfig = gitConfig
-	}
+
+	// Update the GitConfig
+	entry.GitConfig = gitConfig
 
 	// Submit all associated Configs for processing
 	for _, cfg := range entry.Configs {
-		if err := s.submitConfig(cfg); err != nil {
+		if err := s.submitConfig(cfg, entry); err != nil {
+			log.Printf("Error submitting Config '%s': %v", cfg.Cfg.Name, err)
 			return err
 		}
 	}
@@ -153,56 +183,61 @@ func (s *store) CreateOrUpdateGitConfig(gitConfig *k8sversionerv1alpha1.GitConfi
 
 // DeleteGitConfig deletes a GitConfig resource
 func (s *store) DeleteGitConfig(gitConfigName string) error {
-	entryInterface, ok := s.gitCfgMap.Load(gitConfigName)
-	if !ok {
+	// Lock the store for writing
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Retrieve and delete the GitConfigEntry from gitCfgMap
+	entry, exists := s.gitCfgMap[gitConfigName]
+	if !exists {
+		log.Printf("GitConfig '%s' not found", gitConfigName)
 		return ErrGitConfigNotFound
 	}
+	delete(s.gitCfgMap, gitConfigName)
 
-	entry, ok := entryInterface.(*GitConfigEntry)
-	if !ok {
-		return ErrGitConfigUnexpectedType
-	}
+	// Lock the GitConfigEntry for modification
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
 
 	// Optionally, handle associated Configs (e.g., delete or disassociate them)
-	entry.mu.Lock()
-	for _, cfg := range entry.Configs {
-		s.cfgMap.Delete(cfg.Cfg.Name)
+	for configName := range entry.Configs {
+		// Remove Config from cfgMap
+		delete(s.cfgMap, configName)
 		// Optionally, notify or handle the deletion of Configs
+		log.Printf("Deleted Config '%s' associated with GitConfig '%s'", configName, gitConfigName)
 	}
-	entry.Configs = nil
-	entry.mu.Unlock()
 
-	s.gitCfgMap.Delete(gitConfigName)
+	// Clear the Configs map
+	entry.Configs = nil
+
 	return nil
 }
 
 // ConfigProducer returns a channel with Config resources
-func (s *store) ConfigProducer() <-chan *Buddle {
+func (s *store) ConfigProducer() <-chan *Bundle {
 	return s.configChan
 }
 
-// submitConfig sends a Config to the configChan
-func (s *store) submitConfig(cfg *Config) error {
-	gitConfigInterface, ok := s.gitCfgMap.Load(cfg.Cfg.Spec.GitRef)
-	if !ok {
-		return ErrGitConfigNotFound
-	}
-
-	gitEntry, ok := gitConfigInterface.(*GitConfigEntry)
-	if !ok {
-		return ErrGitConfigUnexpectedType
-	}
-
+// submitConfig sends a Config to the configChan for processing
+func (s *store) submitConfig(cfg *Config, gitEntry *GitConfigEntry) error {
 	// Ensure the GitConfig name matches the reference
 	if gitEntry.GitConfig.Name != cfg.Cfg.Spec.GitRef {
+		log.Printf("GitConfig name '%s' does not match reference '%s' for Config '%s'",
+			gitEntry.GitConfig.Name, cfg.Cfg.Spec.GitRef, cfg.Cfg.Name)
 		return ErrGitConfigNameMismatch
 	}
 
-	// Send the Buddle to the channel
-	s.configChan <- &Buddle{
-		Config:    cfg,
-		GitConfig: gitEntry.GitConfig,
+	// Send the Bundle to the channel in a non-blocking manner
+	select {
+	case s.configChan <- &Bundle{
+		Config: cfg,
+		Git:    gitEntry,
+	}:
+		log.Printf("Submitted Config '%s' for processing", cfg.Cfg.Name)
+	default:
+		log.Printf("Config channel is full; could not submit Config '%s'", cfg.Cfg.Name)
 	}
+
 	return nil
 }
 
@@ -211,9 +246,9 @@ var (
 	ErrConfigNotFound = errors.New("config not found")
 	// ErrGitConfigNotFound is returned when a GitConfig is not found
 	ErrGitConfigNotFound = errors.New("gitconfig not found")
-	// ErrUnexpectedTypeOfConfig is returned when the type of the Config is unexpected
+	// ErrConfigUnexpectedType is returned when the type of the Config is unexpected
 	ErrConfigUnexpectedType = errors.New("expected type *Config, got another type")
-	// ErrUnexpectedTypeOfGitConfig is returned when the type of the GitConfig is unexpected
+	// ErrGitConfigUnexpectedType is returned when the type of the GitConfig is unexpected
 	ErrGitConfigUnexpectedType = errors.New("expected type *GitConfigEntry, got another type")
 	// ErrGitConfigNameMismatch is returned when GitConfig name does not match the reference
 	ErrGitConfigNameMismatch = errors.New("gitconfig name does not match the reference")

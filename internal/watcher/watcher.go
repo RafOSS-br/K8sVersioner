@@ -20,12 +20,12 @@ import (
 
 // WatcherMgmt is an interface for observing a resource
 type WatcherMgmt interface {
-	AddListener(ctx context.Context, listen <-chan *store.Buddle) error
+	AddListener(ctx context.Context, listen <-chan *store.Bundle) error
 }
 
 // Informer represents a single informer instance
 type Informer struct {
-	Buddle    *store.Buddle
+	Bundle    *store.Bundle
 	Informer  cache.SharedInformer
 	StopCh    chan struct{}
 	WaitGroup sync.WaitGroup
@@ -34,12 +34,12 @@ type Informer struct {
 // Notify is a function that notifies the synchronizer
 func (i *Informer) Notify(ctx context.Context, key string, objs *unstructured.UnstructuredList, w *WatcherImpl) {
 	logger := log.FromContext(ctx)
-	err := w.synchronizer.Synchronize(ctx, i.Buddle, objs)
+	err := w.synchronizer.Synchronize(ctx, i.Bundle, objs)
 	if err != nil {
-		logger.Error(err, "Failed to synchronize", "buddle", i.Buddle.Config.Cfg.Name)
+		logger.Error(err, "Failed to synchronize", "bundle", i.Bundle.Config.Cfg.Name)
 		return
 	}
-	logger.Info("Notified channel", "buddle", i.Buddle.Config.Cfg.Name)
+	logger.Info("Notified channel", "bundle", i.Bundle.Config.Cfg.Name)
 
 }
 
@@ -71,7 +71,7 @@ func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchroniz
 }
 
 // AddListener adds a listener to the WatcherImpl
-func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Buddle) error {
+func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Bundle) error {
 	logger := log.FromContext(ctx)
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -82,14 +82,14 @@ func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Budd
 			case <-ctx.Done():
 				logger.Info("AddListener context cancelled")
 				return
-			case buddle, ok := <-listen:
+			case bundle, ok := <-listen:
 				if !ok {
 					logger.Info("Listener channel closed")
 					return
 				}
-				logger.Info("Received buddle to add watcher", "buddle", buddle.Config.Cfg.Name)
-				if err := w.addInformer(ctx, buddle); err != nil {
-					logger.Error(err, "Failed to add informer", "buddle", buddle.Config.Cfg.Name)
+				logger.Info("Received bundle to add watcher", "bundle", bundle.Config.Cfg.Name)
+				if err := w.addInformer(ctx, bundle); err != nil {
+					logger.Error(err, "Failed to add informer", "bundle", bundle.Config.Cfg.Name)
 				}
 			}
 		}
@@ -98,15 +98,15 @@ func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Budd
 	return nil
 }
 
-// addInformer adds informers for the resources in the buddle
-func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) error {
+// addInformer adds informers for the resources in the bundle
+func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) error {
 	logger := log.FromContext(ctx)
-	key := getKey(buddle)
+	key := getKey(bundle)
 
-	// Get the GroupVersionKinds for the resources in the buddle
-	gvks, err := getGvks(buddle)
+	// Get the GroupVersionKinds for the resources in the bundle
+	gvks, err := getGvks(bundle)
 	if err != nil {
-		logger.Error(err, "Failed to get gvks", "buddle", buddle.Config.Cfg.Name)
+		logger.Error(err, "Failed to get gvks", "bundle", bundle.Config.Cfg.Name)
 		return err
 	}
 
@@ -115,7 +115,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 
 	if exists {
 		if err := w.deleteInformer(ctx, key, gvks, oldMap); err != nil {
-			logger.Error(err, "Failed to delete informer", "buddle", buddle.Config.Cfg.Name)
+			logger.Error(err, "Failed to delete informer", "bundle", bundle.Config.Cfg.Name)
 			return err
 		}
 	}
@@ -125,8 +125,8 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		w.informers[key] = make(map[schema.GroupVersionKind]*Informer)
 	}
 
-	for _, res := range buddle.Config.Cfg.Spec.IncludeResource {
-		// Check if the GVK is present in the buddle
+	for _, res := range bundle.Config.Cfg.Spec.IncludeResource {
+		// Check if the GVK is present in the bundle
 		gvk, ok := gvks[getGvkKey(res.Name, res.APIVersion)]
 		if !ok {
 			logger.Info("GVK not found", "resource", res.Name, "apiVersion", res.APIVersion)
@@ -149,10 +149,10 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 		informer := cache.NewSharedInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					return w.dynamicClient.Resource(gvr).Namespace(buddle.Cfg.Spec.Namespace).List(context.Background(), options)
+					return w.dynamicClient.Resource(gvr).Namespace(bundle.Config.Cfg.Spec.Namespace).List(context.Background(), options)
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					return w.dynamicClient.Resource(gvr).Namespace(buddle.Cfg.Spec.Namespace).Watch(context.Background(), options)
+					return w.dynamicClient.Resource(gvr).Namespace(bundle.Config.Cfg.Spec.Namespace).Watch(context.Background(), options)
 				},
 			},
 			&unstructured.Unstructured{},
@@ -161,7 +161,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, buddle *store.Buddle) err
 
 		// Create Informer instance
 		inf := &Informer{
-			Buddle:   buddle,
+			Bundle:   bundle,
 			Informer: informer,
 			StopCh:   make(chan struct{}),
 		}
@@ -241,17 +241,17 @@ func assertUnstructuredList(obj interface{}) (*unstructured.Unstructured, error)
 }
 
 // Helper function to deletes a stoped used informer and stop the informer
-func (w *WatcherImpl) deleteInformer(ctx context.Context, buddleKey string, gvks map[string]schema.GroupVersionKind, oldMap map[schema.GroupVersionKind]*Informer) error {
+func (w *WatcherImpl) deleteInformer(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, oldMap map[schema.GroupVersionKind]*Informer) error {
 	logger := log.FromContext(ctx)
 
 	if len(gvks) == 0 {
-		logger.Info("No resources found, deleting informers", "buddle", buddleKey)
+		logger.Info("No resources found, deleting informers", "bundle", bundleKey)
 		w.stopInformers(ctx, oldMap)
 		return nil
 	}
 
 	for kGvk := range oldMap {
-		// Check if the kGvk is present in the buddle
+		// Check if the kGvk is present in the bundle
 		gvk, ok := gvks[getGvkKey(kGvk.Kind, kGvk.Version)]
 		if ok {
 			continue
@@ -268,7 +268,7 @@ func (w *WatcherImpl) deleteInformer(ctx context.Context, buddleKey string, gvks
 
 	// If no more resources are being watched for this key, delete the map entry
 	if len(oldMap) == 0 {
-		delete(w.informers, buddleKey)
+		delete(w.informers, bundleKey)
 	}
 
 	return nil
@@ -281,7 +281,7 @@ func (w *WatcherImpl) stopInformers(ctx context.Context, m map[schema.GroupVersi
 	for _, inf := range m {
 		close(inf.StopCh)
 		inf.WaitGroup.Wait()
-		logger.Info("Stopped informer", "buddle", inf.Buddle.Config.Cfg.Name)
+		logger.Info("Stopped informer", "bundle", inf.Bundle.Config.Cfg.Name)
 	}
 }
 
@@ -290,10 +290,10 @@ func getGvkKey(kind, apiVersion string) string {
 	return fmt.Sprintf("%s-%s", kind, apiVersion)
 }
 
-// Helper function to get gvks from a buddle
-func getGvks(buddle *store.Buddle) (map[string]schema.GroupVersionKind, error) {
-	gvks := make(map[string]schema.GroupVersionKind, len(buddle.Config.Cfg.Spec.IncludeResource))
-	for _, res := range buddle.Config.Cfg.Spec.IncludeResource {
+// Helper function to get gvks from a bundle
+func getGvks(bundle *store.Bundle) (map[string]schema.GroupVersionKind, error) {
+	gvks := make(map[string]schema.GroupVersionKind, len(bundle.Config.Cfg.Spec.IncludeResource))
+	for _, res := range bundle.Config.Cfg.Spec.IncludeResource {
 		group, err := getGroup(res.APIVersion)
 		if err != nil {
 			return nil, err
@@ -330,7 +330,7 @@ func getPlural(kind string) string {
 	return fmt.Sprintf("%ss", kind)
 }
 
-// getKey generates a unique key for a buddle
-func getKey(buddle *store.Buddle) string {
-	return buddle.Config.Cfg.Name
+// getKey generates a unique key for a bundle
+func getKey(bundle *store.Bundle) string {
+	return bundle.Config.Cfg.Name
 }

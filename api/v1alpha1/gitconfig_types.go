@@ -20,20 +20,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // GitConfigSpec defines the desired state of GitConfig
 type GitConfigSpec struct {
-	Protocol          string `json:"protocol" validate:"required,oneof=http https ssh"`               // Protocol
-	RepositoryURL     string `json:"repositoryUrl" validate:"required,url"`                           // Repository URL
-	Branch            string `json:"branch" validate:"required"`                                      // Branch
-	Username          string `json:"username,omitempty" validate:"required"`                          // Username (optional)
-	Password          string `json:"password,omitempty" validate:"required"`                          // Password (optional)
-	SSHPrivateKeyPath string `json:"sshPrivateKeyPath,omitempty" validate:"required_if=Protocol ssh"` // SSH Private Key Path
-	RepositoryPath    string `json:"repositoryPath" validate:"required"`                              // Repository Path
-	RepositoryFolder  string `json:"repositoryFolder" validate:"required"`                            // Repository Folder
-	DryRun            bool   `json:"dryRun,omitempty"`
+	Protocol           string    `json:"protocol" validate:"required,oneof=http https ssh"`               // Protocol
+	RepositoryURL      string    `json:"repositoryUrl" validate:"required,url"`                           // Repository URL
+	Branch             string    `json:"branch" validate:"required"`                                      // Branch
+	Username           string    `json:"username,omitempty" validate:"required"`                          // Username (optional)
+	Password           string    `json:"password,omitempty" validate:"required"`                          // Password (optional) // TODO: read from secret
+	SSHPrivateKeyPath  string    `json:"sshPrivateKeyPath,omitempty" validate:"required_if=Protocol ssh"` // SSH Private Key Path
+	RepositoryBasePath string    `json:"repositoryBasePath" validate:"required"`                          // Repository Path
+	DryRun             bool      `json:"dryRun,omitempty"`                                                // Dry Run
+	Signature          Signature `json:"signature,omitempty" validate:"required"`                         // Signature
+}
+
+type Signature struct {
+	Name  string `json:"name" validate:"required"`
+	Email string `json:"email" validate:"required,email"`
 }
 
 // GitConfigStatus defines the observed state of GitConfig
@@ -43,7 +45,7 @@ type GitConfigStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=gitconfigs
+//+kubebuilder:resource:scope=Cluster,shortName=gitconfigs
 
 // GitConfig is the Schema for the gitconfigs API
 type GitConfig struct {
