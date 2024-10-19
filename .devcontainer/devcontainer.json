@@ -24,5 +24,6 @@
 	},
 	"remoteEnv": {
         "KUBECONFIG": "/home/vscode/.kube/config"
-    }
+    },
+	"onCreateCommand": "go mod download"
 }
