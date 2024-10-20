@@ -46,8 +46,8 @@ spec:
   - git
   - automation
   links:
-  - name: Controller Git K8s
-    url: https://controller-git-k8s.domain
+  - name: K8sVersioner
+    url: https://k8sversioner.app
   maintainers:
   - email: rrmmbmg903@gmail.com
     name: Rafael R M
