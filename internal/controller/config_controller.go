@@ -37,7 +37,7 @@ type ConfigReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=versioning.k8sversioner.app,resources=configs/finalizers,verbs=update
 func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
