@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -29,11 +30,11 @@ func TestCreateOrUpdateConfig(t *testing.T) {
 	}
 
 	// Create or update GitConfig
-	err := s.CreateOrUpdateGitConfig(gitConfig)
+	err := s.CreateOrUpdateGitConfig(context.Background(), gitConfig)
 	assert.NoError(t, err, "Creating GitConfig should not produce an error")
 
 	// Create or update Config
-	err = s.CreateOrUpdateConfig(config)
+	err = s.CreateOrUpdateConfig(context.Background(), config)
 	assert.NoError(t, err, "Creating Config should not produce an error")
 
 	// Verify if the config was stored correctly in cfgMap
@@ -68,7 +69,7 @@ func TestCreateOrUpdateGitConfig(t *testing.T) {
 	}
 
 	// Create or update GitConfig
-	err := s.CreateOrUpdateGitConfig(gitConfig)
+	err := s.CreateOrUpdateGitConfig(context.Background(), gitConfig)
 	assert.NoError(t, err, "Creating GitConfig should not produce an error")
 
 	// Verify if the GitConfig was stored correctly in gitCfgMap
@@ -104,11 +105,11 @@ func TestBundleProducedOnConfigCreation(t *testing.T) {
 	}
 
 	// Create or update GitConfig
-	err := s.CreateOrUpdateGitConfig(gitConfig)
+	err := s.CreateOrUpdateGitConfig(context.Background(), gitConfig)
 	assert.NoError(t, err, "Creating GitConfig should not produce an error")
 
 	// Create or update Config
-	err = s.CreateOrUpdateConfig(config)
+	err = s.CreateOrUpdateConfig(context.Background(), config)
 	assert.NoError(t, err, "Creating Config should not produce an error")
 
 	// Wait for the Bundle to be produced
@@ -134,7 +135,7 @@ func TestCreateOrUpdateConfig_GitConfigNotFound(t *testing.T) {
 	}
 
 	// Attempt to create Config without existing GitConfig
-	err := s.CreateOrUpdateConfig(config)
+	err := s.CreateOrUpdateConfig(context.Background(), config)
 	assert.ErrorIs(t, err, ErrGitConfigNotFound, "Expected ErrGitConfigNotFound when GitConfig does not exist")
 }
 
@@ -157,14 +158,14 @@ func TestDeleteConfig(t *testing.T) {
 	}
 
 	// Create GitConfig and Config
-	err := s.CreateOrUpdateGitConfig(gitConfig)
+	err := s.CreateOrUpdateGitConfig(context.Background(), gitConfig)
 	assert.NoError(t, err, "Creating GitConfig should not produce an error")
 
-	err = s.CreateOrUpdateConfig(config)
+	err = s.CreateOrUpdateConfig(context.Background(), config)
 	assert.NoError(t, err, "Creating Config should not produce an error")
 
 	// Delete Config
-	err = s.DeleteConfig("test-config")
+	err = s.DeleteConfig(context.Background(), "test-config")
 	assert.NoError(t, err, "Deleting Config should not produce an error")
 
 	// Verify Config is removed from cfgMap
@@ -204,14 +205,14 @@ func TestDeleteGitConfig(t *testing.T) {
 	}
 
 	// Create GitConfig and Config
-	err := s.CreateOrUpdateGitConfig(gitConfig)
+	err := s.CreateOrUpdateGitConfig(context.Background(), gitConfig)
 	assert.NoError(t, err, "Creating GitConfig should not produce an error")
 
-	err = s.CreateOrUpdateConfig(config)
+	err = s.CreateOrUpdateConfig(context.Background(), config)
 	assert.NoError(t, err, "Creating Config should not produce an error")
 
 	// Delete GitConfig
-	err = s.DeleteGitConfig("test-gitconfig")
+	err = s.DeleteGitConfig(context.Background(), "test-gitconfig")
 	assert.NoError(t, err, "Deleting GitConfig should not produce an error")
 
 	// Verify GitConfig is removed from gitCfgMap
@@ -249,11 +250,11 @@ func TestConfigProducer(t *testing.T) {
 	}
 
 	// Create GitConfig
-	err := s.CreateOrUpdateGitConfig(gitConfig)
+	err := s.CreateOrUpdateGitConfig(context.Background(), gitConfig)
 	assert.NoError(t, err, "Creating GitConfig should not produce an error")
 
 	// Create Config
-	err = s.CreateOrUpdateConfig(config)
+	err = s.CreateOrUpdateConfig(context.Background(), config)
 	assert.NoError(t, err, "Creating Config should not produce an error")
 
 	// Wait for the Bundle to be produced

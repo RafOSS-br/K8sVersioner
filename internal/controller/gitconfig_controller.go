@@ -46,7 +46,7 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if err := r.Get(ctx, req.NamespacedName, gitConfig); err != nil {
 		if errors.IsNotFound(err) {
-			if err := store.StoreSingleton.DeleteGitConfig(req.Name); err != nil {
+			if err := store.StoreSingleton.DeleteGitConfig(ctx, req.Name); err != nil {
 				logger.Error(err, "unable to delete GitConfig")
 				return ctrl.Result{}, err
 			}
@@ -68,7 +68,7 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	err := store.StoreSingleton.CreateOrUpdateGitConfig(gitConfig)
+	err := store.StoreSingleton.CreateOrUpdateGitConfig(ctx, gitConfig)
 	if err != nil {
 		logger.Error(err, "unable to create or update GitConfig")
 		return ctrl.Result{}, err

@@ -88,12 +88,39 @@ func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Bund
 					return
 				}
 				logger.Info("Received bundle to add watcher", "bundle", bundle.Config.Cfg.Name)
+				if bundle.Del {
+					if err := w.StopInformer(ctx, bundle); err != nil {
+						logger.Error(err, "Failed to stop informer", "bundle", bundle.Config.Cfg.Name)
+					}
+					continue
+				}
 				if err := w.addInformer(ctx, bundle); err != nil {
 					logger.Error(err, "Failed to add informer", "bundle", bundle.Config.Cfg.Name)
 				}
 			}
 		}
 	}()
+
+	return nil
+}
+
+// StopInformer stops the informer for a given bundle
+func (w *WatcherImpl) StopInformer(ctx context.Context, bundle *store.Bundle) error {
+	logger := log.FromContext(ctx)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	key := getKey(bundle)
+	oldMap, exists := w.informers[key]
+	if !exists {
+		logger.Info("No informers found for bundle", "bundle", bundle.Config.Cfg.Name)
+		return nil
+	}
+
+	if err := w.cleanupStaleInformers(ctx, key, nil, oldMap); err != nil {
+		logger.Error(err, "Failed to delete informer", "bundle", bundle.Config.Cfg.Name)
+		return err
+	}
 
 	return nil
 }
@@ -114,7 +141,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) err
 	oldMap, exists := w.informers[key]
 
 	if exists {
-		if err := w.deleteInformer(ctx, key, gvks, oldMap); err != nil {
+		if err := w.cleanupStaleInformers(ctx, key, gvks, oldMap); err != nil {
 			logger.Error(err, "Failed to delete informer", "bundle", bundle.Config.Cfg.Name)
 			return err
 		}
@@ -241,7 +268,7 @@ func assertUnstructuredList(obj interface{}) (*unstructured.Unstructured, error)
 }
 
 // Helper function to deletes a stoped used informer and stop the informer
-func (w *WatcherImpl) deleteInformer(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, oldMap map[schema.GroupVersionKind]*Informer) error {
+func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, oldMap map[schema.GroupVersionKind]*Informer) error {
 	logger := log.FromContext(ctx)
 
 	if len(gvks) == 0 {

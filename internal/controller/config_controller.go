@@ -48,7 +48,7 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
 
 		if errors.IsNotFound(err) {
-			if err := store.StoreSingleton.DeleteConfig(req.Name); err != nil {
+			if err := store.StoreSingleton.DeleteConfig(ctx, req.Name); err != nil {
 				logger.Error(err, "unable to delete Config")
 				return ctrl.Result{}, err
 			}
@@ -72,7 +72,7 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	err := store.StoreSingleton.CreateOrUpdateConfig(config)
+	err := store.StoreSingleton.CreateOrUpdateConfig(ctx, config)
 	if err != nil {
 		if err == store.ErrGitConfigNotFound {
 			logger.Info(err.Error())
