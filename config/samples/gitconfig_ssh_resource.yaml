@@ -1,0 +1,16 @@
+apiVersion: versioning.k8sversioner.app/v1alpha1
+kind: GitConfig
+metadata:
+  name: my-gitconfig
+spec:
+  protocol: ssh
+  repositoryUrl: localhost:3000/gitUsername/k8s-backup.git
+  branch: myBranch
+  sshPrivateKeyPath: /home/username/.ssh/id_rsa
+  username: gitUsername
+  signature:
+    email: mail@provider.com
+    name: My Name
+  password: "MyPassword" # Optional if using ssh
+  repositoryBasePath: /workspaces/controller-git-k8s/repo/
+  dryRun: false # If true, no changes will be pushed to the repository

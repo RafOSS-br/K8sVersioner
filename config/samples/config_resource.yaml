@@ -1,0 +1,15 @@
+apiVersion: versioning.k8sversioner.app/v1alpha1
+kind: Config
+metadata:
+  name: my-config
+spec:
+  scope: namespace
+  namespace: default
+  includeResource:
+    - name: "pod"
+      apiVersion: "v1"
+  # annotations:
+  #   app.kubernetes.io/name: myApp
+  outputType: yaml
+  gitRef: my-gitconfig
+  folderStructure: "{{ .Namespace }}/{{ .ResourceType }}/{{ .ResourceName }}.yaml"
