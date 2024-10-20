@@ -46,14 +46,8 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	config := &k8sversionerv1alpha1.Config{}
 
 	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
-
 		if errors.IsNotFound(err) {
-			if err := store.StoreSingleton.DeleteConfig(ctx, req.Name); err != nil {
-				logger.Error(err, "unable to delete Config")
-				return ctrl.Result{}, err
-			}
-			logger.Info("Deleted Config resource")
-			return ctrl.Result{}, nil
+			return r.deleteConfig(ctx, req)
 		}
 		logger.Error(err, "unable to fetch Config")
 		return ctrl.Result{}, err
@@ -61,29 +55,56 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	v := validator.New()
 	if err := v.Struct(config.Spec); err != nil {
-		if config.Status.Error == err.Error() {
-			return ctrl.Result{}, nil
-		}
-		logger.Info("Validation failed", "error", err)
-		if err := r.StateUpdate(ctx, req, config, err); err != nil {
-			logger.Error(err, "unable to update Config state")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		return r.handleStructError(ctx, req, config, err)
 	}
 
 	err := store.StoreSingleton.CreateOrUpdateConfig(ctx, config)
 	if err != nil {
-		if err == store.ErrGitConfigNotFound {
-			logger.Info(err.Error())
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to create or update Config")
-		return ctrl.Result{}, err
+		return r.handleCreateOrUpdateError(ctx, err)
 	}
 
 	logger.Info("Loaded Config", "name", config.Name)
 	return ctrl.Result{}, nil
+}
+
+// deleteConfig is a helper function to delete a Config resource
+func (r *ConfigReconciler) deleteConfig(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if err := store.StoreSingleton.DeleteConfig(ctx, req.Name); err != nil {
+		if err == store.ErrNoMoreConfigsAssociated {
+			logger.Info(err.Error())
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "unable to delete Config")
+		return ctrl.Result{}, err
+	}
+	logger.Info("Deleted Config resource")
+	return ctrl.Result{}, nil
+}
+
+// handleStructError is a helper function to handle a stuck error
+func (r *ConfigReconciler) handleStructError(ctx context.Context, req ctrl.Request, config *k8sversionerv1alpha1.Config, err error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if config.Status.Error == err.Error() {
+		return ctrl.Result{}, nil
+	}
+	logger.Info("Validation failed", "error", err)
+	if err := r.StateUpdate(ctx, req, config, err); err != nil {
+		logger.Error(err, "unable to update Config state")
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+// handleCreateOrUpdateError is a helper function to handle a create or update error
+func (r *ConfigReconciler) handleCreateOrUpdateError(ctx context.Context, err error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if err == store.ErrGitConfigNotFound {
+		logger.Info(err.Error())
+		return ctrl.Result{}, nil
+	}
+	logger.Error(err, "unable to create or update Config")
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

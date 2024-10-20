@@ -46,12 +46,7 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if err := r.Get(ctx, req.NamespacedName, gitConfig); err != nil {
 		if errors.IsNotFound(err) {
-			if err := store.StoreSingleton.DeleteGitConfig(ctx, req.Name); err != nil {
-				logger.Error(err, "unable to delete GitConfig")
-				return ctrl.Result{}, err
-			}
-			logger.Info("Deleted GitConfig resource")
-			return ctrl.Result{}, nil
+			return r.deleteGitConfig(ctx, req)
 		}
 		logger.Error(err, "unable to fetch GitConfig")
 		return ctrl.Result{}, err
@@ -60,12 +55,7 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	v := validator.New()
 
 	if err := v.Struct(gitConfig.Spec); err != nil {
-		logger.Info("GitConfig validation failed", "error", err)
-		if err := r.StateUpdate(ctx, req, gitConfig, err); err != nil {
-			logger.Error(err, "unable to update GitConfig state")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		return r.handleStructError(ctx, req, gitConfig, err)
 	}
 
 	err := store.StoreSingleton.CreateOrUpdateGitConfig(ctx, gitConfig)
@@ -76,6 +66,28 @@ func (r *GitConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	logger.Info("Loaded GitConfig", "name", gitConfig.Name)
 
+	return ctrl.Result{}, nil
+}
+
+// deleteGitConfig is a helper function to delete a GitConfig resource
+func (r *GitConfigReconciler) deleteGitConfig(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if err := store.StoreSingleton.DeleteGitConfig(ctx, req.Name); err != nil {
+		logger.Error(err, "unable to delete GitConfig")
+		return ctrl.Result{}, err
+	}
+	logger.Info("Deleted GitConfig resource")
+	return ctrl.Result{}, nil
+}
+
+// handleStructError is a helper function to handle a stuck error
+func (r *GitConfigReconciler) handleStructError(ctx context.Context, req ctrl.Request, gitConfig *k8sversionerv1alpha1.GitConfig, err error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("GitConfig validation failed", "error", err)
+	if err := r.StateUpdate(ctx, req, gitConfig, err); err != nil {
+		logger.Error(err, "unable to update GitConfig state")
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
