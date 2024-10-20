@@ -166,7 +166,7 @@ func TestDeleteConfig(t *testing.T) {
 
 	// Delete Config
 	err = s.DeleteConfig(context.Background(), "test-config")
-	assert.NoError(t, err, "Deleting Config should not produce an error")
+	assert.ErrorIs(t, err, ErrNoMoreConfigsAssociated, "Expected ErrConfigNotFound when Config does not exist")
 
 	// Verify Config is removed from cfgMap
 	s.(*store).mu.RLock()
