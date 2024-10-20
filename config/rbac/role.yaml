@@ -9,8 +9,6 @@ rules:
   resources:
   - configs
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
@@ -35,8 +33,6 @@ rules:
   resources:
   - gitconfigs
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
