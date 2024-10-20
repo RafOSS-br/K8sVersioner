@@ -268,7 +268,7 @@ func (g *GitClient) RemoveResource(ctx context.Context, path string) error {
 
 	fullPath := filepath.Join(g.dir, path)
 	err := os.Remove(fullPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return err
 	}
 
