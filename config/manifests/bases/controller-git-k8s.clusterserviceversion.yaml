@@ -1,0 +1,58 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: controller-git-k8s.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: Config is the Schema for the configs API
+      displayName: Config
+      kind: Config
+      name: configs.versioning.k8sversioner.app
+      version: v1alpha1
+    - description: GitConfig is the Schema for the gitconfigs API
+      displayName: Git Config
+      kind: GitConfig
+      name: gitconfigs.versioning.k8sversioner.app
+      version: v1alpha1
+  description: This operator helps manage application versioning within a Kubernetes
+    cluster, handling configuration and Git-based deployment workflows automatically.
+  displayName: K8s Versioner Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - kubernetes
+  - versioning
+  - application-deployment
+  - git
+  - automation
+  links:
+  - name: Controller Git K8s
+    url: https://controller-git-k8s.domain
+  maintainers:
+  - email: rrmmbmg903@gmail.com
+    name: Rafael R M
+  maturity: alpha
+  provider:
+    name: K8sVersioner
+    url: https://k8sversioner.app/
+  version: 0.0.0
