@@ -7,6 +7,7 @@ import (
 
 	"github.com/RafOSS-br/K8sVersioner/internal/store"
 	synchronizer "github.com/RafOSS-br/K8sVersioner/internal/synchronizator"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -165,11 +166,17 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) err
 			logger.Info("Informer already exists for resource", "gvk", gvk)
 			continue
 		}
+		plural, err := getPlural(res.Name, res.APIVersion)
+		if err != nil {
+			logger.Error(err, "Failed to get plural", "resource", res.Name)
+			return err
+		}
+
 		// Create GroupVersionResource
 		gvr := schema.GroupVersionResource{
 			Group:    gvk.Group,
 			Version:  gvk.Version,
-			Resource: getPlural(res.Name),
+			Resource: plural,
 		}
 
 		// Create a new SharedInformer
@@ -194,7 +201,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) err
 		}
 
 		// Add event handlers
-		_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				u, err := assertUnstructuredList(obj)
 				if err != nil {
@@ -352,9 +359,15 @@ func getVersion(apiVersion string) (string, error) {
 }
 
 // Helper function to get plural resource name
-func getPlural(kind string) string {
-	// Simple pluralization logic, can be enhanced
-	return fmt.Sprintf("%ss", kind)
+func getPlural(kind, version string) (string, error) {
+	gv := schema.GroupVersion{Group: "", Version: version}
+	gvk := gv.WithKind(kind)
+	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{gv})
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return "", err
+	}
+	return mapping.Resource.Resource, nil
 }
 
 // getKey generates a unique key for a bundle
