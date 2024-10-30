@@ -28,8 +28,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# k8sversioner.app/controller-git-k8s-bundle:$VERSION and k8sversioner.app/controller-git-k8s-catalog:$VERSION.
-IMAGE_TAG_BASE ?= k8sversioner.app/controller-git-k8s
+# k8sversioner.app/k8sversioner-bundle:$VERSION and k8sversioner.app/k8sversioner-catalog:$VERSION.
+IMAGE_TAG_BASE ?= k8sversioner.app/k8sversioner
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)

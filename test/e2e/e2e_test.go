@@ -27,7 +27,7 @@ import (
 	"github.com/RafOSS-br/K8sVersioner/test/utils"
 )
 
-const namespace = "controller-git-k8s-system"
+const namespace = "k8sversioner-system"
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
@@ -60,7 +60,7 @@ var _ = Describe("controller", Ordered, func() {
 			var err error
 
 			// projectimage stores the name of the image used in the example
-			var projectimage = "example.com/controller-git-k8s:v0.0.1"
+			var projectimage = "example.com/k8sversioner:v0.0.1"
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))

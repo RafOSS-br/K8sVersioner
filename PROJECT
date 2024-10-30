@@ -8,7 +8,7 @@ layout:
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
-projectName: controller-git-k8s
+projectName: k8sversioner
 repo: github.com/RafOSS-br/K8sVersioner
 resources:
 - api:

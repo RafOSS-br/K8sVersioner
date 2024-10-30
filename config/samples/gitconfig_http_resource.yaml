@@ -11,5 +11,5 @@ spec:
     email: mail@provider.com
     name: My Name
   password: "MyPassword"
-  repositoryBasePath: /workspaces/controller-git-k8s/repo/
+  repositoryBasePath: /workspaces/k8sversioner/repo/
   dryRun: false # If true, no changes will be pushed to the repository

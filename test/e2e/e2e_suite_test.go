@@ -27,6 +27,6 @@ import (
 // Run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	fmt.Fprintf(GinkgoWriter, "Starting controller-git-k8s suite\n")
+	fmt.Fprintf(GinkgoWriter, "Starting k8sversioner suite\n")
 	RunSpecs(t, "e2e suite")
 }

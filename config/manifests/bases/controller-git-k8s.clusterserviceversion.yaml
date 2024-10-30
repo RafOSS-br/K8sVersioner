@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-  name: controller-git-k8s.v0.0.0
+  name: k8sversioner.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
