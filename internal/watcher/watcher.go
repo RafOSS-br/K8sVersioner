@@ -7,7 +7,6 @@ import (
 
 	"github.com/RafOSS-br/K8sVersioner/internal/store"
 	synchronizer "github.com/RafOSS-br/K8sVersioner/internal/synchronizator"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -54,10 +54,11 @@ type WatcherImpl struct {
 	dynamicClient dynamic.Interface
 	scheme        *runtime.Scheme
 	synchronizer  synchronizer.Sync
+	mapper        *restmapper.DeferredDiscoveryRESTMapper
 }
 
 // NewWatcherImpl returns a new WatcherImpl
-func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchronizer.Sync) (WatcherMgmt, error) {
+func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchronizer.Sync, mapper *restmapper.DeferredDiscoveryRESTMapper) (WatcherMgmt, error) {
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, err
@@ -68,6 +69,7 @@ func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchroniz
 		dynamicClient: dynClient,
 		scheme:        scheme,
 		synchronizer:  sync,
+		mapper:        mapper,
 	}, nil
 }
 
@@ -166,7 +168,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) err
 			logger.Info("Informer already exists for resource", "gvk", gvk)
 			continue
 		}
-		plural, err := getPlural(res.Name, res.APIVersion)
+		plural, err := getPlural(res.Name, res.APIVersion, w.mapper)
 		if err != nil {
 			logger.Error(err, "Failed to get plural", "resource", res.Name)
 			return err
@@ -359,10 +361,9 @@ func getVersion(apiVersion string) (string, error) {
 }
 
 // Helper function to get plural resource name
-func getPlural(kind, version string) (string, error) {
+func getPlural(kind, version string, mapper *restmapper.DeferredDiscoveryRESTMapper) (string, error) {
 	gv := schema.GroupVersion{Group: "", Version: version}
 	gvk := gv.WithKind(kind)
-	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{gv})
 	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
 		return "", err
