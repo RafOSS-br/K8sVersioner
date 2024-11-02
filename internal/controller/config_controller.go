@@ -18,8 +18,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,7 +47,7 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	config := &k8sversionerv1alpha1.Config{}
 
 	if err := r.Get(ctx, req.NamespacedName, config); err != nil {
-		if errors.IsNotFound(err) {
+		if apiErrors.IsNotFound(err) {
 			return r.deleteConfig(ctx, req)
 		}
 		logger.Error(err, "unable to fetch Config")
@@ -70,11 +71,14 @@ func (r *ConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 // deleteConfig is a helper function to delete a Config resource
 func (r *ConfigReconciler) deleteConfig(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	if err := store.StoreSingleton.DeleteConfig(ctx, req.Name); err != nil {
-		if err == store.ErrNoMoreConfigsAssociated {
-			logger.Info(err.Error())
+	err := store.StoreSingleton.DeleteConfig(ctx, req.Name)
+	if err != nil {
+		if errors.Is(err, store.ErrConfigNotFound) {
+			// Config already deleted from the store, nothing more to do
+			logger.Info("Config already deleted from store")
 			return ctrl.Result{}, nil
 		}
+		// Handle other errors
 		logger.Error(err, "unable to delete Config")
 		return ctrl.Result{}, err
 	}

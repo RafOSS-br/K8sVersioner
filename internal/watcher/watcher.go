@@ -277,16 +277,17 @@ func assertUnstructuredList(obj interface{}) (*unstructured.Unstructured, error)
 }
 
 // Helper function to deletes a stoped used informer and stop the informer
-func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, oldMap map[schema.GroupVersionKind]*Informer) error {
+func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, m map[schema.GroupVersionKind]*Informer) error {
 	logger := log.FromContext(ctx)
 
 	if len(gvks) == 0 {
 		logger.Info("No resources found, deleting informers", "bundle", bundleKey)
-		w.stopInformers(ctx, oldMap)
+		w.stopInformers(ctx, m)
+		delete(w.informers, bundleKey)
 		return nil
 	}
 
-	for kGvk := range oldMap {
+	for kGvk := range m {
 		// Check if the kGvk is present in the bundle
 		gvk, ok := gvks[getGvkKey(kGvk.Kind, kGvk.Version)]
 		if ok {
@@ -294,16 +295,16 @@ func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey strin
 		}
 
 		// Stop the informer
-		close(oldMap[gvk].StopCh)
-		oldMap[gvk].WaitGroup.Wait()
+		close(m[gvk].StopCh)
+		m[gvk].WaitGroup.Wait()
 
 		// Delete the informer from the map
-		delete(oldMap, gvk)
+		delete(m, gvk)
 		logger.Info("Deleted informer", "gvk", gvk)
 	}
 
 	// If no more resources are being watched for this key, delete the map entry
-	if len(oldMap) == 0 {
+	if len(m) == 0 {
 		delete(w.informers, bundleKey)
 	}
 
