@@ -290,9 +290,8 @@ func (s *store) submitConfig(ctx context.Context, cfg *Config, gitEntry *GitConf
 }
 
 var (
-	ErrConfigNotFound          = errors.New("config not found")
-	ErrGitConfigNotFound       = errors.New("gitconfig not found")
-	ErrConfigUnexpectedType    = errors.New("expected type *Config, got another type")
-	ErrGitConfigUnexpectedType = errors.New("expected type *GitConfigEntry, got another type")
-	ErrGitConfigNameMismatch   = errors.New("gitconfig name does not match the reference")
+	ErrConfigNotFound        = errors.New("config not found")
+	ErrGitConfigNotFound     = errors.New("gitconfig not found")
+	ErrConfigUnexpectedType  = errors.New("expected type *Config, got another type")
+	ErrGitConfigNameMismatch = errors.New("gitconfig name does not match the reference")
 )
