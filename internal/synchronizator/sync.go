@@ -16,11 +16,13 @@ import (
 
 	"github.com/RafOSS-br/K8sVersioner/internal/git"
 	"github.com/RafOSS-br/K8sVersioner/internal/store"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // Sync defines the interface for resource synchronization
 type Sync interface {
-	Synchronize(ctx context.Context, bundle *store.Bundle, objs ...*unstructured.UnstructuredList) error
+	Synchronize(ctx context.Context, bundleFunc func() (*store.Bundle, error), objs ...*unstructured.UnstructuredList) error
 }
 
 // SyncImpl is the concrete implementation of the Sync interface
@@ -38,10 +40,14 @@ func NewSync(dyn dynamic.Interface, mapper meta.RESTMapper) Sync {
 }
 
 // Synchronize initiates the synchronization process
-func (s *SyncImpl) Synchronize(ctx context.Context, bundle *store.Bundle, objs ...*unstructured.UnstructuredList) error {
+func (s *SyncImpl) Synchronize(ctx context.Context, bundleFunc func() (*store.Bundle, error), objs ...*unstructured.UnstructuredList) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting resource synchronization")
-
+	bundle, err := bundleFunc()
+	if err != nil {
+		logger.Error(err, "Error getting bundle")
+		return err
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -70,7 +76,6 @@ func (s *SyncImpl) Synchronize(ctx context.Context, bundle *store.Bundle, objs .
 						logger.Info("Resource does not match filters, skipping", "name", item.GetName())
 						continue
 					}
-
 					if err := s.syncIndividualResource(ctx, bundle, gitClient, &item); err != nil {
 						if err == git.ErrAlreadyUpToDate {
 							logger.Info("No changes to commit and push", "name", item.GetName())
@@ -123,7 +128,7 @@ func (s *SyncImpl) getGitClient(ctx context.Context, bundle *store.Bundle) (*git
 func (s *SyncImpl) syncIndividualResource(ctx context.Context, bundle *store.Bundle, gitClient *git.GitClient, item *unstructured.Unstructured) error {
 	logger := log.FromContext(ctx)
 
-	data, err := s.serializeResource(item, bundle.Config.Cfg.Spec.OutputType)
+	data, err := s.serializeResource(bundle, item)
 	if err != nil {
 		return err
 	}
@@ -166,10 +171,31 @@ func isDeletionEvent(obj *unstructured.Unstructured) bool {
 }
 
 // serializeResource serializes the resource to the desired format
-func (s *SyncImpl) serializeResource(item *unstructured.Unstructured, outputType string) ([]byte, error) {
-	if outputType == "json" {
-		return json.MarshalIndent(item.Object, "", "  ")
+func (s *SyncImpl) serializeResource(bundle *store.Bundle, item *unstructured.Unstructured) ([]byte, error) {
+
+	b, err := json.Marshal(item.Object)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize item object: %w", err)
 	}
+	itemJSON := string(b)
+
+	for _, path := range bundle.Config.Cfg.Spec.ExcludeFieldPaths {
+		if path == "" {
+			continue
+		}
+		if res := gjson.Get(string(itemJSON), path); res.Exists() {
+			itemJSON, err = sjson.Delete(itemJSON, path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to delete path %s: %w", path, err)
+			}
+		}
+	}
+	item = &unstructured.Unstructured{}
+	err = json.Unmarshal([]byte(itemJSON), item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal item object: %w", err)
+	}
+
 	return yaml.Marshal(item.Object)
 }
 

@@ -25,14 +25,14 @@ import (
 
 // ConfigSpec defines the desired state of Config
 type ConfigSpec struct {
-	Scope           string            `json:"scope" validate:"required,oneof=cluster namespace"` // Scope of the config
-	Namespace       string            `json:"namespace" validate:"required_if=Scope namespace"`  // Namespace to watch if scope is namespace
-	IncludeResource []ResourceFilter  `json:"includeResource,omitempty" validate:"dive"`         // Resources to include
-	Labels          map[string]string `json:"labels,omitempty"`                                  // Label filters
-	OutputType      string            `json:"outputType" validate:"required,oneof=yaml json"`    // Output type
-	Annotations     map[string]string `json:"annotations,omitempty"`                             // Annotation filters
-	GitRef          string            `json:"gitRef" validate:"required"`                        // Reference to GitConfig
-	FolderStructure string            `json:"folderStructure" validate:"required"`               // Folder structure
+	Scope             string            `json:"scope" validate:"required,oneof=cluster namespace"` // Scope of the config
+	Namespace         string            `json:"namespace" validate:"required_if=Scope namespace"`  // Namespace to watch if scope is namespace
+	IncludeResource   []ResourceFilter  `json:"includeResource,omitempty" validate:"dive"`         // Resources to include
+	Labels            map[string]string `json:"labels,omitempty"`                                  // Label filters
+	Annotations       map[string]string `json:"annotations,omitempty"`                             // Annotation filters
+	GitRef            string            `json:"gitRef" validate:"required"`                        // Reference to GitConfig
+	FolderStructure   string            `json:"folderStructure" validate:"required"`               // Folder structure
+	ExcludeFieldPaths []string          `json:"excludeFieldPaths,omitempty"`                       // Paths to exclude
 }
 
 type ResourceFilter struct {

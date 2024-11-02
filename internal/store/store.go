@@ -30,7 +30,7 @@ type Store interface {
 	DeleteConfig(ctx context.Context, configName string) error
 	CreateOrUpdateGitConfig(ctx context.Context, gitConfig *k8sversionerv1alpha1.GitConfig) error
 	DeleteGitConfig(ctx context.Context, gitConfigName string) error
-	ConfigProducer() <-chan *Bundle
+	ConfigProducer() <-chan func() (*Bundle, error)
 }
 
 // GitConfigEntry holds a GitConfig and its associated Configs, along with a mutex for synchronization
@@ -57,7 +57,7 @@ func (g *GitConfigEntry) TryLock() bool {
 
 // store implements the Store interface and manages Config and GitConfig resources
 type store struct {
-	configChan chan *Bundle
+	configChan chan func() (*Bundle, error)
 	gitCfgMap  map[string]*GitConfigEntry
 	cfgMap     map[string]*Config
 	mu         sync.RWMutex
@@ -66,7 +66,7 @@ type store struct {
 // NewStore returns a new instance of Store
 func NewStore(poolSize int) Store {
 	return &store{
-		configChan: make(chan *Bundle, poolSize),
+		configChan: make(chan func() (*Bundle, error), poolSize),
 		gitCfgMap:  make(map[string]*GitConfigEntry),
 		cfgMap:     make(map[string]*Config),
 	}
@@ -105,21 +105,27 @@ func (s *store) CreateOrUpdateConfig(ctx context.Context, config *k8sversionerv1
 func (s *store) DeleteConfig(ctx context.Context, configName string) error {
 	log := log.FromContext(ctx)
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	cfg, exists := s.cfgMap[configName]
 	if !exists {
 		return ErrConfigNotFound
 	}
-	delete(s.cfgMap, configName)
+	var deleteFuncs []func()
+
+	defer func() {
+		for _, f := range deleteFuncs {
+			f()
+		}
+		s.mu.Unlock()
+	}()
+
+	deleteFuncs = append(deleteFuncs, func() { delete(s.cfgMap, configName) })
 
 	gitRef := cfg.Cfg.Spec.GitRef
 	entry, exists := s.gitCfgMap[gitRef]
 	if exists {
 		entry.mu.Lock()
 		defer entry.mu.Unlock()
-
-		delete(entry.Configs, configName)
+		deleteFuncs = append(deleteFuncs, func() { delete(entry.Configs, configName) })
 
 		if entry.GitConfig != nil {
 			if err := s.submitConfig(ctx, cfg, entry, true); err != nil {
@@ -129,7 +135,7 @@ func (s *store) DeleteConfig(ctx context.Context, configName string) error {
 
 		if len(entry.Configs) == 0 {
 			if entry.GitConfig == nil {
-				delete(s.gitCfgMap, gitRef)
+				deleteFuncs = append(deleteFuncs, func() { delete(s.gitCfgMap, gitRef) })
 			}
 			log.Info("No more configs associated with GitConfig", "gitConfigName", gitRef)
 		}
@@ -172,7 +178,6 @@ func (s *store) CreateOrUpdateGitConfig(ctx context.Context, gitConfig *k8sversi
 // DeleteGitConfig deletes a GitConfig resource
 func (s *store) DeleteGitConfig(ctx context.Context, gitConfigName string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	logger := log.FromContext(ctx)
 
@@ -182,12 +187,21 @@ func (s *store) DeleteGitConfig(ctx context.Context, gitConfigName string) error
 		return ErrGitConfigNotFound
 	}
 
+	var deleteFuncs []func()
+
+	defer func() {
+		for _, f := range deleteFuncs {
+			f()
+		}
+		s.mu.Unlock()
+	}()
+
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 
 	// Submit Configs for deletion before removing GitConfig
 	for configName, cfg := range entry.Configs {
-		delete(s.cfgMap, configName)
+		deleteFuncs = append(deleteFuncs, func() { delete(s.cfgMap, configName) })
 		if err := s.submitConfig(ctx, cfg, entry, true); err != nil {
 			logger.Error(err, "Failed to submit Config for deletion", "name", configName)
 			return err
@@ -196,7 +210,7 @@ func (s *store) DeleteGitConfig(ctx context.Context, gitConfigName string) error
 	}
 
 	// Remove GitConfigEntry from gitCfgMap
-	delete(s.gitCfgMap, gitConfigName)
+	deleteFuncs = append(deleteFuncs, func() { delete(s.gitCfgMap, gitConfigName) })
 
 	entry.Configs = nil
 	entry.GitConfig = nil
@@ -205,34 +219,71 @@ func (s *store) DeleteGitConfig(ctx context.Context, gitConfigName string) error
 }
 
 // ConfigProducer returns a channel with Config resources
-func (s *store) ConfigProducer() <-chan *Bundle {
+func (s *store) ConfigProducer() <-chan func() (*Bundle, error) {
 	return s.configChan
 }
 
 // submitConfig sends a Config to the configChan for processing
 func (s *store) submitConfig(ctx context.Context, cfg *Config, gitEntry *GitConfigEntry, isDel bool) error {
 	logger := log.FromContext(ctx)
-
+	configName := cfg.Cfg.Name
 	if !isDel && gitEntry.GitConfig == nil {
-		logger.Error(ErrGitConfigNotFound, "GitConfig is nil in submitConfig", "configName", cfg.Cfg.Name)
+		logger.Error(ErrGitConfigNotFound, "GitConfig is nil in submitConfig", "configName", configName)
 		return ErrGitConfigNotFound
 	}
-
-	if gitEntry.GitConfig != nil && gitEntry.GitConfig.Name != cfg.Cfg.Spec.GitRef {
+	gitConfigName := gitEntry.GitConfig.Name
+	if gitEntry.GitConfig != nil && gitConfigName != cfg.Cfg.Spec.GitRef {
 		logger.Error(ErrGitConfigNameMismatch, "GitConfig name does not match reference",
-			"gitConfigName", gitEntry.GitConfig.Name, "gitRef", cfg.Cfg.Spec.GitRef, "configName", cfg.Cfg.Name)
+			"gitConfigName", gitConfigName, "gitRef", cfg.Cfg.Spec.GitRef, "configName", configName)
 		return ErrGitConfigNameMismatch
 	}
 
+	getLastGitEntry := func() (*GitConfigEntry, error) {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		if gitEntry, exists := s.gitCfgMap[gitConfigName]; exists {
+			return gitEntry, nil
+		}
+		return nil, ErrGitConfigNotFound
+	}
+
+	getLastConfig := func() (*Config, error) {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		if config, exists := s.cfgMap[configName]; exists {
+			return config, nil
+		}
+		return nil, ErrConfigNotFound
+	}
+
+	getBuddle := func() (*Bundle, error) {
+		if isDel {
+			return &Bundle{
+				Config: cfg,
+				Git:    gitEntry,
+				Del:    isDel,
+			}, nil
+		}
+		config, err := getLastConfig()
+		if err != nil {
+			return nil, err
+		}
+		gitEntry, err := getLastGitEntry()
+		if err != nil {
+			return nil, err
+		}
+		return &Bundle{
+			Config: config,
+			Git:    gitEntry,
+			Del:    isDel,
+		}, nil
+	}
+
 	select {
-	case s.configChan <- &Bundle{
-		Config: cfg,
-		Git:    gitEntry,
-		Del:    isDel,
-	}:
-		logger.Info("Submitted Config for processing", "configName", cfg.Cfg.Name, "isDel", isDel)
+	case s.configChan <- getBuddle:
+		logger.Info("Submitted Config for processing", "configName", configName, "isDel", isDel)
 	default:
-		logger.Info("Config channel is full; could not submit Config", "configName", cfg.Cfg.Name)
+		logger.Info("Config channel is full; could not submit Config", "configName", configName)
 	}
 
 	return nil
@@ -244,5 +295,4 @@ var (
 	ErrConfigUnexpectedType    = errors.New("expected type *Config, got another type")
 	ErrGitConfigUnexpectedType = errors.New("expected type *GitConfigEntry, got another type")
 	ErrGitConfigNameMismatch   = errors.New("gitconfig name does not match the reference")
-	ErrNoMoreConfigsAssociated = errors.New("no more configs associated with gitconfig")
 )

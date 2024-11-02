@@ -21,26 +21,31 @@ import (
 
 // WatcherMgmt is an interface for observing a resource
 type WatcherMgmt interface {
-	AddListener(ctx context.Context, listen <-chan *store.Bundle) error
+	AddListener(ctx context.Context, listen <-chan func() (*store.Bundle, error)) error
 }
 
 // Informer represents a single informer instance
 type Informer struct {
-	Bundle    *store.Bundle
-	Informer  cache.SharedInformer
-	StopCh    chan struct{}
-	WaitGroup sync.WaitGroup
+	BundleFunc func() (*store.Bundle, error)
+	Informer   cache.SharedInformer
+	StopCh     chan struct{}
+	WaitGroup  sync.WaitGroup
 }
 
 // Notify is a function that notifies the synchronizer
 func (i *Informer) Notify(ctx context.Context, key string, objs *unstructured.UnstructuredList, w *WatcherImpl) {
 	logger := log.FromContext(ctx)
-	err := w.synchronizer.Synchronize(ctx, i.Bundle, objs)
+	bundle, err := i.BundleFunc()
 	if err != nil {
-		logger.Error(err, "Failed to synchronize", "bundle", i.Bundle.Config.Cfg.Name)
+		logger.Error(err, "Failed to get bundle")
 		return
 	}
-	logger.Info("Notified channel", "bundle", i.Bundle.Config.Cfg.Name)
+	err = w.synchronizer.Synchronize(ctx, i.BundleFunc, objs)
+	if err != nil {
+		logger.Error(err, "Failed to synchronize", "bundle", bundle.Config.Cfg.Name)
+		return
+	}
+	logger.Info("Notified channel", "bundle", bundle.Config.Cfg.Name)
 
 }
 
@@ -74,10 +79,8 @@ func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchroniz
 }
 
 // AddListener adds a listener to the WatcherImpl
-func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Bundle) error {
+func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan func() (*store.Bundle, error)) error {
 	logger := log.FromContext(ctx)
-	w.mu.Lock()
-	defer w.mu.Unlock()
 
 	go func() {
 		for {
@@ -85,21 +88,33 @@ func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Bund
 			case <-ctx.Done():
 				logger.Info("AddListener context cancelled")
 				return
-			case bundle, ok := <-listen:
+			case bundleFunc, ok := <-listen:
 				if !ok {
 					logger.Info("Listener channel closed")
 					return
 				}
-				logger.Info("Received bundle to add watcher", "bundle", bundle.Config.Cfg.Name)
-				if bundle.Del {
-					if err := w.StopInformer(ctx, bundle); err != nil {
-						logger.Error(err, "Failed to stop informer", "bundle", bundle.Config.Cfg.Name)
-					}
+
+				bundle, err := bundleFunc()
+				if err != nil {
+					logger.Error(err, "Failed to get bundle")
 					continue
 				}
-				if err := w.addInformer(ctx, bundle); err != nil {
+
+				logger.Info("Received bundle to add watcher", "bundle", bundle.Config.Cfg.Name)
+
+				w.mu.Lock()
+				if bundle.Del {
+					if err := w.StopInformer(ctx, bundleFunc); err != nil {
+						logger.Error(err, "Failed to stop informer", "bundle", bundle.Config.Cfg.Name)
+					}
+					w.mu.Unlock()
+					continue
+				}
+
+				if err := w.addInformer(ctx, bundleFunc); err != nil {
 					logger.Error(err, "Failed to add informer", "bundle", bundle.Config.Cfg.Name)
 				}
+				w.mu.Unlock()
 			}
 		}
 	}()
@@ -108,10 +123,14 @@ func (w *WatcherImpl) AddListener(ctx context.Context, listen <-chan *store.Bund
 }
 
 // StopInformer stops the informer for a given bundle
-func (w *WatcherImpl) StopInformer(ctx context.Context, bundle *store.Bundle) error {
+func (w *WatcherImpl) StopInformer(ctx context.Context, bundleFunc func() (*store.Bundle, error)) error {
 	logger := log.FromContext(ctx)
-	w.mu.Lock()
-	defer w.mu.Unlock()
+
+	bundle, err := bundleFunc()
+	if err != nil {
+		logger.Error(err, "Failed to get bundle")
+		return err
+	}
 
 	key := getKey(bundle)
 	oldMap, exists := w.informers[key]
@@ -120,7 +139,7 @@ func (w *WatcherImpl) StopInformer(ctx context.Context, bundle *store.Bundle) er
 		return nil
 	}
 
-	if err := w.cleanupStaleInformers(ctx, key, nil, oldMap); err != nil {
+	if err := w.cleanupStaleInformers(ctx, key, nil, oldMap, bundleFunc); err != nil {
 		logger.Error(err, "Failed to delete informer", "bundle", bundle.Config.Cfg.Name)
 		return err
 	}
@@ -129,8 +148,15 @@ func (w *WatcherImpl) StopInformer(ctx context.Context, bundle *store.Bundle) er
 }
 
 // addInformer adds informers for the resources in the bundle
-func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) error {
+func (w *WatcherImpl) addInformer(ctx context.Context, bundleFunc func() (*store.Bundle, error)) error {
 	logger := log.FromContext(ctx)
+
+	bundle, err := bundleFunc()
+	if err != nil {
+		logger.Error(err, "Failed to get bundle")
+		return err
+	}
+
 	key := getKey(bundle)
 
 	// Get the GroupVersionKinds for the resources in the bundle
@@ -144,7 +170,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) err
 	oldMap, exists := w.informers[key]
 
 	if exists {
-		if err := w.cleanupStaleInformers(ctx, key, gvks, oldMap); err != nil {
+		if err := w.cleanupStaleInformers(ctx, key, gvks, oldMap, bundleFunc); err != nil {
 			logger.Error(err, "Failed to delete informer", "bundle", bundle.Config.Cfg.Name)
 			return err
 		}
@@ -197,9 +223,9 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundle *store.Bundle) err
 
 		// Create Informer instance
 		inf := &Informer{
-			Bundle:   bundle,
-			Informer: informer,
-			StopCh:   make(chan struct{}),
+			BundleFunc: bundleFunc,
+			Informer:   informer,
+			StopCh:     make(chan struct{}),
 		}
 
 		// Add event handlers
@@ -277,12 +303,12 @@ func assertUnstructuredList(obj interface{}) (*unstructured.Unstructured, error)
 }
 
 // Helper function to deletes a stoped used informer and stop the informer
-func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, m map[schema.GroupVersionKind]*Informer) error {
+func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey string, gvks map[string]schema.GroupVersionKind, m map[schema.GroupVersionKind]*Informer, bundleFunc func() (*store.Bundle, error)) error {
 	logger := log.FromContext(ctx)
 
 	if len(gvks) == 0 {
 		logger.Info("No resources found, deleting informers", "bundle", bundleKey)
-		w.stopInformers(ctx, m)
+		w.stopInformers(ctx, m, bundleFunc)
 		delete(w.informers, bundleKey)
 		return nil
 	}
@@ -312,13 +338,18 @@ func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey strin
 }
 
 // Helper function to stop informers
-func (w *WatcherImpl) stopInformers(ctx context.Context, m map[schema.GroupVersionKind]*Informer) {
+func (w *WatcherImpl) stopInformers(ctx context.Context, m map[schema.GroupVersionKind]*Informer, bundleFunc func() (*store.Bundle, error)) {
 	logger := log.FromContext(ctx)
 
 	for _, inf := range m {
 		close(inf.StopCh)
+		bundle, err := bundleFunc()
+		if err != nil {
+			logger.Error(err, "Failed to get bundle")
+			return
+		}
 		inf.WaitGroup.Wait()
-		logger.Info("Stopped informer", "bundle", inf.Bundle.Config.Cfg.Name)
+		logger.Info("Stopped informer", "bundle", bundle.Config.Cfg.Name)
 	}
 }
 

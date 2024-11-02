@@ -114,7 +114,9 @@ func TestBundleProducedOnConfigCreation(t *testing.T) {
 
 	// Wait for the Bundle to be produced
 	select {
-	case bundle := <-s.ConfigProducer():
+	case bundleFunc := <-s.ConfigProducer():
+		bundle, err := bundleFunc()
+		assert.NoError(t, err, "Error getting Bundle")
 		assert.Equal(t, config, bundle.Config.Cfg, "Config in Bundle does not match the expected")
 		assert.Equal(t, gitConfig, bundle.Git.GitConfig, "GitConfig in Bundle does not match the expected")
 	case <-time.After(time.Second * 2):
@@ -166,7 +168,7 @@ func TestDeleteConfig(t *testing.T) {
 
 	// Delete Config
 	err = s.DeleteConfig(context.Background(), "test-config")
-	assert.ErrorIs(t, err, ErrNoMoreConfigsAssociated, "Expected ErrConfigNotFound when Config does not exist")
+	assert.NoError(t, err, "Deleting Config should not produce an error")
 
 	// Verify Config is removed from cfgMap
 	s.(*store).mu.RLock()
@@ -259,7 +261,9 @@ func TestConfigProducer(t *testing.T) {
 
 	// Wait for the Bundle to be produced
 	select {
-	case bundle := <-configChan:
+	case bundleFunc := <-configChan:
+		bundle, err := bundleFunc()
+		assert.NoError(t, err, "Error getting Bundle")
 		assert.Equal(t, config, bundle.Config.Cfg, "Config in Bundle does not match the expected")
 		assert.Equal(t, gitConfig, bundle.Git.GitConfig, "GitConfig in Bundle does not match the expected")
 	case <-time.After(time.Second * 2):

@@ -45,6 +45,10 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              excludeFieldPaths:
+                items:
+                  type: string
+                type: array
               folderStructure:
                 type: string
               gitRef:
@@ -71,15 +75,12 @@ spec:
                 type: object
               namespace:
                 type: string
-              outputType:
-                type: string
               scope:
                 type: string
             required:
             - folderStructure
             - gitRef
             - namespace
-            - outputType
             - scope
             type: object
           status:
