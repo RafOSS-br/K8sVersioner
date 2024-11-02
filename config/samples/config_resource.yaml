@@ -10,6 +10,9 @@ spec:
       apiVersion: "v1"
   # annotations:
   #   app.kubernetes.io/name: myApp
-  outputType: yaml
   gitRef: my-gitconfig
   folderStructure: "{{ .Namespace }}/{{ .ResourceType }}/{{ .ResourceName }}.yaml"
+  excludeFieldPaths:
+    - "metadata.finalizers"
+    - "metadata.managedFields"
+    - "status"
