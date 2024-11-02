@@ -70,7 +70,6 @@ func (s *SyncImpl) Synchronize(ctx context.Context, bundleFunc func() (*store.Bu
 
 			for _, obj := range objs {
 				for _, item := range obj.Items {
-					item = *cleanResource(&item)
 
 					if !matchesFilters(&item, bundle.Config.Cfg.Spec.Labels, bundle.Config.Cfg.Spec.Annotations) {
 						logger.Info("Resource does not match filters, skipping", "name", item.GetName())
@@ -94,19 +93,6 @@ func (s *SyncImpl) Synchronize(ctx context.Context, bundleFunc func() (*store.Bu
 			return nil
 		}
 	}
-}
-
-func cleanResource(resource *unstructured.Unstructured) *unstructured.Unstructured {
-	// Remove 'status'
-	delete(resource.Object, "status")
-
-	// Remove 'managedFields'
-	resource.SetManagedFields(nil)
-
-	// Remove 'finalizers'
-	resource.SetFinalizers(nil)
-
-	return resource
 }
 
 const (
