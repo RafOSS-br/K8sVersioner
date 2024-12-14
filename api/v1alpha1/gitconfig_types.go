@@ -23,7 +23,7 @@ import (
 // GitConfigSpec defines the desired state of GitConfig
 type GitConfigSpec struct {
 	Protocol           string    `json:"protocol" validate:"required,oneof=http https ssh"`               // Protocol
-	RepositoryURL      string    `json:"repositoryUrl" validate:"required,url"`                           // Repository URL
+	RepositoryURL      string    `json:"repositoryUrl" validate:"required"`                               // Repository URL
 	Branch             string    `json:"branch" validate:"required"`                                      // Branch
 	Username           string    `json:"username,omitempty" validate:"required"`                          // Username (optional)
 	Password           string    `json:"password,omitempty" validate:"required"`                          // Password (optional) // TODO: read from secret

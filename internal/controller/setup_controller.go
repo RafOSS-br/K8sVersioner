@@ -61,7 +61,7 @@ func (mc *SetupController) Start(ctx context.Context) error {
 
 				sync := sync.NewSync(dynClient, mapper)
 
-				watcher, err := watcher.NewWatcherImpl(mc.config, mc.scheme, sync, mapper)
+				watcher, err := watcher.NewWatcherImpl(mc.config, mc.scheme, sync, mapper, clientSet.Discovery())
 				if err != nil {
 					logger.Error(err, "Failed to create watcher")
 					return

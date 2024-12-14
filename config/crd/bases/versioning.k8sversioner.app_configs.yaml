@@ -56,17 +56,14 @@ spec:
               includeResource:
                 items:
                   properties:
-                    apiVersion:
+                    group:
                       type: string
-                    name:
+                    kind:
                       type: string
-                    withManagedFields:
-                      type: boolean
-                    withStatusField:
-                      type: boolean
+                    version:
+                      type: string
                   required:
-                  - apiVersion
-                  - name
+                  - kind
                   type: object
                 type: array
               labels:
@@ -80,7 +77,6 @@ spec:
             required:
             - folderStructure
             - gitRef
-            - namespace
             - scope
             type: object
           status:

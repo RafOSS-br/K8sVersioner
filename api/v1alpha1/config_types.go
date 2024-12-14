@@ -25,21 +25,20 @@ import (
 
 // ConfigSpec defines the desired state of Config
 type ConfigSpec struct {
-	Scope             string            `json:"scope" validate:"required,oneof=cluster namespace"` // Scope of the config
-	Namespace         string            `json:"namespace" validate:"required_if=Scope namespace"`  // Namespace to watch if scope is namespace
-	IncludeResource   []ResourceFilter  `json:"includeResource,omitempty" validate:"dive"`         // Resources to include
-	Labels            map[string]string `json:"labels,omitempty"`                                  // Label filters
-	Annotations       map[string]string `json:"annotations,omitempty"`                             // Annotation filters
-	GitRef            string            `json:"gitRef" validate:"required"`                        // Reference to GitConfig
-	FolderStructure   string            `json:"folderStructure" validate:"required"`               // Folder structure
-	ExcludeFieldPaths []string          `json:"excludeFieldPaths,omitempty"`                       // Paths to exclude
+	Scope             string            `json:"scope" validate:"required,oneof=cluster namespace"`          // Scope of the config
+	Namespace         string            `json:"namespace,omitempty" validate:"required_if=Scope namespace"` // Namespace to watch if scope is namespace
+	IncludeResource   []*ResourceFilter `json:"includeResource,omitempty" validate:"dive"`                  // Resources to include
+	Labels            map[string]string `json:"labels,omitempty"`                                           // Label filters
+	Annotations       map[string]string `json:"annotations,omitempty"`                                      // Annotation filters
+	GitRef            string            `json:"gitRef" validate:"required"`                                 // Reference to GitConfig
+	FolderStructure   string            `json:"folderStructure" validate:"required"`                        // Folder structure
+	ExcludeFieldPaths []string          `json:"excludeFieldPaths,omitempty"`                                // Paths to exclude
 }
 
 type ResourceFilter struct {
-	Name              string `json:"name" validate:"required"`       // Name of the resource
-	APIVersion        string `json:"apiVersion" validate:"required"` // API version of the resource
-	WithManagedFields bool   `json:"withManagedFields,omitempty"`    // Include managed fields
-	WithStatusField   bool   `json:"withStatusField,omitempty"`      // Include status field
+	Kind    string `json:"kind" validate:"required"` // Name of the resource
+	Group   string `json:"group,omitempty"`          // Group of the resource
+	Version string `json:"version,omitempty"`        // API version of the resource
 }
 
 // ConfigStatus defines the observed state of Config

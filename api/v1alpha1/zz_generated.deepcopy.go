@@ -88,8 +88,14 @@ func (in *ConfigSpec) DeepCopyInto(out *ConfigSpec) {
 	*out = *in
 	if in.IncludeResource != nil {
 		in, out := &in.IncludeResource, &out.IncludeResource
-		*out = make([]ResourceFilter, len(*in))
-		copy(*out, *in)
+		*out = make([]*ResourceFilter, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(ResourceFilter)
+				**out = **in
+			}
+		}
 	}
 	if in.Labels != nil {
 		in, out := &in.Labels, &out.Labels

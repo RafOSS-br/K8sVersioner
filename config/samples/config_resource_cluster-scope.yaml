@@ -6,9 +6,12 @@ spec:
   scope: namespace
   namespace: default
   includeResource:
-    - name: "pod"
-      apiVersion: "v1"
+    - kind: "GitConfig"
+      version: "v1alpha1"
+      group: "versioning.k8sversioner.app"
   # annotations:
+  #   app.kubernetes.io/name: myApp
+  # labels:
   #   app.kubernetes.io/name: myApp
   gitRef: my-gitconfig
   folderStructure: "{{ .Namespace }}/{{ .ResourceType }}/{{ .ResourceName }}.yaml"

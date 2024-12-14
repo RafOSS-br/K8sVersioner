@@ -3,8 +3,10 @@ package watcher
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/RafOSS-br/K8sVersioner/api/v1alpha1"
 	"github.com/RafOSS-br/K8sVersioner/internal/store"
 	synchronizer "github.com/RafOSS-br/K8sVersioner/internal/synchronizator"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
@@ -54,27 +57,31 @@ type InformerMap map[string]map[schema.GroupVersionKind]*Informer
 
 // WatcherImpl is a struct that implements the WatcherMgmt interface
 type WatcherImpl struct {
-	informers     InformerMap
-	mu            sync.Mutex
-	dynamicClient dynamic.Interface
-	scheme        *runtime.Scheme
-	synchronizer  synchronizer.Sync
-	mapper        *restmapper.DeferredDiscoveryRESTMapper
+	informers       InformerMap
+	mu              sync.Mutex
+	dynamicClient   dynamic.Interface
+	scheme          *runtime.Scheme
+	synchronizer    synchronizer.Sync
+	mapper          *restmapper.DeferredDiscoveryRESTMapper
+	discoveryClient discovery.DiscoveryInterface
 }
 
 // NewWatcherImpl returns a new WatcherImpl
-func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme, sync synchronizer.Sync, mapper *restmapper.DeferredDiscoveryRESTMapper) (WatcherMgmt, error) {
+func NewWatcherImpl(config *rest.Config, scheme *runtime.Scheme,
+	sync synchronizer.Sync, mapper *restmapper.DeferredDiscoveryRESTMapper,
+	discovery discovery.DiscoveryInterface) (WatcherMgmt, error) {
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &WatcherImpl{
-		informers:     make(InformerMap),
-		dynamicClient: dynClient,
-		scheme:        scheme,
-		synchronizer:  sync,
-		mapper:        mapper,
+		informers:       make(InformerMap),
+		dynamicClient:   dynClient,
+		scheme:          scheme,
+		synchronizer:    sync,
+		mapper:          mapper,
+		discoveryClient: discovery,
 	}, nil
 }
 
@@ -160,7 +167,7 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundleFunc func() (*store
 	key := getKey(bundle)
 
 	// Get the GroupVersionKinds for the resources in the bundle
-	gvks, err := getGvks(bundle)
+	gvks, err := getGvks(w.discoveryClient, bundle)
 	if err != nil {
 		logger.Error(err, "Failed to get gvks", "bundle", bundle.Config.Cfg.Name)
 		return err
@@ -183,9 +190,9 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundleFunc func() (*store
 
 	for _, res := range bundle.Config.Cfg.Spec.IncludeResource {
 		// Check if the GVK is present in the bundle
-		gvk, ok := gvks[getGvkKey(res.Name, res.APIVersion)]
+		gvk, ok := gvks[getGvkKey(res.Group, res.Version, res.Kind)]
 		if !ok {
-			logger.Info("GVK not found", "resource", res.Name, "apiVersion", res.APIVersion)
+			logger.Info("GVK not found", "resource", res.Kind, "apiVersion", res.Version)
 			continue
 		}
 
@@ -194,9 +201,9 @@ func (w *WatcherImpl) addInformer(ctx context.Context, bundleFunc func() (*store
 			logger.Info("Informer already exists for resource", "gvk", gvk)
 			continue
 		}
-		plural, err := getPlural(res.Name, res.APIVersion, w.mapper)
+		plural, err := getPlural(res.Group, res.Version, res.Kind, w.mapper)
 		if err != nil {
-			logger.Error(err, "Failed to get plural", "resource", res.Name)
+			logger.Error(err, "Failed to get plural", "resource", res.Kind)
 			return err
 		}
 
@@ -315,7 +322,7 @@ func (w *WatcherImpl) cleanupStaleInformers(ctx context.Context, bundleKey strin
 
 	for kGvk := range m {
 		// Check if the kGvk is present in the bundle
-		gvk, ok := gvks[getGvkKey(kGvk.Kind, kGvk.Version)]
+		gvk, ok := gvks[getGvkKey(kGvk.Group, kGvk.Version, kGvk.Kind)]
 		if ok {
 			continue
 		}
@@ -354,28 +361,35 @@ func (w *WatcherImpl) stopInformers(ctx context.Context, m map[schema.GroupVersi
 }
 
 // Helper to creates a gvk key
-func getGvkKey(kind, apiVersion string) string {
-	return fmt.Sprintf("%s-%s", kind, apiVersion)
+func getGvkKey(group, version, kind string) string {
+	return fmt.Sprintf("%s-%s-%s", group, version, kind)
 }
 
 // Helper function to get gvks from a bundle
-func getGvks(bundle *store.Bundle) (map[string]schema.GroupVersionKind, error) {
+func getGvks(discoveryClient discovery.DiscoveryInterface, bundle *store.Bundle) (map[string]schema.GroupVersionKind, error) {
+	newIncludedResources := make([]*v1alpha1.ResourceFilter, 0)
+	for _, res := range bundle.Config.Cfg.Spec.IncludeResource {
+		if !isGVKComplete(res) {
+			newFilters, err := resolveGVKsToResourceFilter(discoveryClient, res)
+			if err != nil {
+				return nil, err
+			}
+			newIncludedResources = append(newIncludedResources, newFilters...)
+			continue
+		}
+		newIncludedResources = append(newIncludedResources, res)
+	}
+	bundle.Config.Cfg.Spec.IncludeResource = newIncludedResources
 	gvks := make(map[string]schema.GroupVersionKind, len(bundle.Config.Cfg.Spec.IncludeResource))
 	for _, res := range bundle.Config.Cfg.Spec.IncludeResource {
-		group, err := getGroup(res.APIVersion)
-		if err != nil {
-			return nil, err
-		}
-		version, err := getVersion(res.APIVersion)
-		if err != nil {
-			return nil, err
-		}
+		group := res.Group
+		version := res.Version
 		gvk := schema.GroupVersionKind{
 			Group:   group,
 			Version: version,
-			Kind:    res.Name,
+			Kind:    res.Kind,
 		}
-		gvks[getGvkKey(res.Name, res.APIVersion)] = gvk
+		gvks[getGvkKey(res.Group, res.Version, res.Kind)] = gvk
 	}
 	return gvks, nil
 }
@@ -392,9 +406,92 @@ func getVersion(apiVersion string) (string, error) {
 	return parts.Version, err
 }
 
+// resolveGVKsToResourceFilter resolves incomplete GVKs to complete ResourceFilters.
+// Only Kind is mandatory. Users can optionally specify Group or Version.
+func resolveGVKsToResourceFilter(discoveryClient discovery.DiscoveryInterface, filter *v1alpha1.ResourceFilter) ([]*v1alpha1.ResourceFilter, error) {
+	if filter == nil || strings.TrimSpace(filter.Kind) == "" {
+		return nil, fmt.Errorf("filter and filter.Kind must be provided")
+	}
+
+	apiResources, err := discoveryClient.ServerPreferredResources()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get server preferred resources: %w", err)
+	}
+
+	newResourceFilters := []*v1alpha1.ResourceFilter{}
+	filterFunc, err := makeFilterFunc(filter)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, apiResourceList := range apiResources {
+		for _, apiResource := range apiResourceList.APIResources {
+			if filterFunc(apiResource) {
+				group, err := getGroup(apiResourceList.GroupVersion)
+				if err != nil {
+					return nil, err
+				}
+				version, err := getVersion(apiResourceList.GroupVersion)
+				if err != nil {
+					return nil, err
+				}
+				newResourceFilters = append(newResourceFilters, &v1alpha1.ResourceFilter{
+					Kind:    apiResource.Kind,
+					Group:   group,
+					Version: version,
+				})
+			}
+		}
+	}
+
+	if len(newResourceFilters) == 0 && isGVKComplete(filter) {
+		// If no matches found but filter is complete, return the original filter
+		newResourceFilters = append(newResourceFilters, filter)
+	}
+
+	return newResourceFilters, nil
+}
+
+// isGVKComplete checks if the ResourceFilter has all of Kind, Group, and Version.
+func isGVKComplete(filter *v1alpha1.ResourceFilter) bool {
+	return strings.TrimSpace(filter.Kind) != "" &&
+		strings.TrimSpace(filter.Version) != ""
+}
+
+// makeFilterFunc creates a filter function based on the provided ResourceFilter.
+// It ensures that Kind is mandatory and other fields are optional.
+func makeFilterFunc(filter *v1alpha1.ResourceFilter) (func(apiResource metav1.APIResource) bool, error) {
+	lowerKind := strings.ToLower(strings.TrimSpace(filter.Kind))
+	if lowerKind == "" {
+		return nil, fmt.Errorf("filter.Kind must be provided")
+	}
+
+	lowerGroup := strings.ToLower(strings.TrimSpace(filter.Group))
+	lowerVersion := strings.ToLower(strings.TrimSpace(filter.Version))
+
+	return func(apiResource metav1.APIResource) bool {
+		// Match Kind (mandatory)
+		if strings.ToLower(apiResource.Kind) != lowerKind {
+			return false
+		}
+
+		// If Group is specified, match Group
+		if lowerGroup != "" && strings.ToLower(apiResource.Group) != lowerGroup {
+			return false
+		}
+
+		// If Version is specified, match Version
+		if lowerVersion != "" && strings.ToLower(apiResource.Version) != lowerVersion {
+			return false
+		}
+
+		return true
+	}, nil
+}
+
 // Helper function to get plural resource name
-func getPlural(kind, version string, mapper *restmapper.DeferredDiscoveryRESTMapper) (string, error) {
-	gv := schema.GroupVersion{Group: "", Version: version}
+func getPlural(group, version, kind string, mapper *restmapper.DeferredDiscoveryRESTMapper) (string, error) {
+	gv := schema.GroupVersion{Group: group, Version: version}
 	gvk := gv.WithKind(kind)
 	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
