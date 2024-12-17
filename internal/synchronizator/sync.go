@@ -127,23 +127,31 @@ func (s *SyncImpl) syncIndividualResource(ctx context.Context, bundle *store.Bun
 				logger.Info("Resource not found in Git, skipping", "name", item.GetName())
 				return nil
 			}
-			logger.Error(err, "Error removing the resource from Git", "path", path)
 			return err
 		}
 	} else {
 		if err := gitClient.SaveResource(ctx, path, data); err != nil {
-			logger.Error(err, "Error saving the resource to Git", "path", path)
 			return err
 		}
 	}
 
-	if err := gitClient.CommitAndPush(ctx, fmt.Sprintf("Add %s %s", item.GetKind(), item.GetName())); err != nil {
+	commitMsg := fmt.Sprintf("Add %s %s", item.GetKind(), item.GetName())
+	if err := gitClient.CommitAndPush(ctx, commitMsg); err != nil {
 		if err == git.ErrAlreadyUpToDate {
-			logger.Info("No changes to commit and push", "path", path)
+			logger.Info("No changes to commit/push", "path", path)
 			return nil
 		}
-		logger.Error(err, "Error committing and pushing changes to Git", "path", path)
-		return err
+		if err == git.ErrObjectNotFound {
+			if err := gitClient.Reclone(ctx); err != nil {
+				return err
+			}
+			// Retry after reclone
+			if err := gitClient.CommitAndPush(ctx, commitMsg); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	logger.Info("Resource saved to Git", "name", item.GetName(), "namespace", item.GetNamespace(), "path", path)

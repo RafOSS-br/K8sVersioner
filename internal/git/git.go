@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,8 +194,37 @@ func NewGitClient(ctx context.Context, cfg *store.Bundle) (*GitClient, error) {
 	}, nil
 }
 
+func (g *GitClient) Reclone(ctx context.Context) error {
+	remotes, err := g.repo.Remotes()
+	if err != nil || len(remotes) == 0 {
+		fmt.Println(g.repo.Remotes())
+		return errors.New("no remotes found")
+	}
+	_ = os.RemoveAll(g.dir)
+	repo, err := git.PlainCloneContext(ctx, g.dir, false, &git.CloneOptions{
+		URL:           remotes[0].Config().URLs[0],
+		ReferenceName: plumbing.ReferenceName("refs/heads/" + g.branch),
+		Auth:          g.auth,
+		SingleBranch:  true,
+		Depth:         1,
+	})
+	if err != nil {
+		return err
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+	g.repo = repo
+	g.worktree = worktree
+	return nil
+}
+
 // ErrAlreadyUpToDate is returned when there are no changes to commit
 var ErrAlreadyUpToDate = errors.New("already up to date")
+
+// ErrObjectNotFound is returned when the object is not found in the repository
+var ErrObjectNotFound = errors.New("object not found")
 
 // CommitAndPush creates a commit and pushes changes to the remote repository
 func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
@@ -230,6 +260,9 @@ func (g *GitClient) CommitAndPush(ctx context.Context, message string) error {
 			Auth:       g.auth,
 		})
 		if err != nil && err != git.NoErrAlreadyUpToDate {
+			if err == plumbing.ErrObjectNotFound {
+				return ErrObjectNotFound
+			}
 			return err
 		}
 	}
